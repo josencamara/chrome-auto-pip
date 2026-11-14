@@ -170,6 +170,13 @@ function releaseWorkflowCheck() {
     }
   });
   console.log('release workflow package dirs: ok');
+  const helperSource = 'windows/Watch-AppSwitch.ps1';
+  if (!fs.existsSync(path.join(repoRoot, helperSource)) ||
+      !workflow.includes(`cp ${helperSource} "chrome-auto-pip-windows-\${VERSION}.ps1"`) ||
+      !workflow.includes('${{ steps.helper.outputs.path }}')) {
+    throw new Error('release workflow must package and upload the versioned Windows helper separately');
+  }
+  console.log('release workflow Windows helper asset: ok');
 }
 
 try {

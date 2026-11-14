@@ -102,7 +102,17 @@ jobs:
           (cd dist && zip -r "../${NAME}.zip" "${NAME}")
           ls -la "${NAME}.zip"
 
-      - name: Create GitHub Release and upload zip
+      - name: Package the Windows helper separately
+        id: helper
+        shell: bash
+        run: |
+          VERSION='${{ steps.version.outputs.version }}'
+          if [ -f windows/Watch-AppSwitch.ps1 ]; then
+            cp windows/Watch-AppSwitch.ps1 "chrome-auto-pip-windows-${VERSION}.ps1"
+            echo "path=chrome-auto-pip-windows-${VERSION}.ps1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.tag }}
@@ -110,3 +120,4 @@ jobs:
           body: ${{ steps.notes.outputs.notes }}
           files: |
             chrome-auto-pip-${{ steps.version.outputs.version }}.zip
+            ${{ steps.helper.outputs.path }}

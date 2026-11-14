@@ -44,7 +44,7 @@ async function setup({ cold = false } = {}) {
   vm.runInNewContext(source, { chrome, AutoPip });
   const settle = () => new Promise(resolve => setImmediate(resolve));
   await settle();
-  return { tab, window, handlers, calls, state, settle };
+  return { chrome, tab, window, handlers, calls, state, settle };
 }
 
 test('global command opens on the cached selected tab and closes on browser return', async () => {
@@ -77,4 +77,59 @@ test('global command skips disabled or blocked sites', async () => {
   state.autoPipOnTabSwitch = false;
   handlers.command(command);
   expect(calls).toHaveLength(0);
+});
+
+test('a delayed lookup cannot replace the more recently selected tab', async () => {
+  const { chrome, tab, handlers, calls, settle } = await setup();
+  const newer = { ...tab, id: tab.id + 1, url: 'https://video.example/next' };
+  const lookups = [];
+  chrome.tabs.query = () => new Promise(resolve => { lookups.push(resolve); });
+  handlers.activated({ windowId: tab.windowId, tabId: tab.id });
+  handlers.activated({ windowId: tab.windowId, tabId: newer.id });
+  lookups[1]([newer]);
+  await settle();
+  lookups[0]([tab]);
+  await settle();
+
+  handlers.command(command);
+  expect(calls.map(call => call.target.tabId)).toEqual([newer.id]);
+});
+
+test('browser return can retry closing PiP after the page focus exit fails', async () => {
+  const { tab, window, handlers, calls, settle } = await setup();
+  handlers.command(command);
+  const [request] = calls;
+  let focusListener;
+  let attempts = 0;
+  const document = {
+    URL: tab.url,
+    hasFocus: () => false,
+    pictureInPictureEnabled: true,
+    async exitPictureInPicture() {
+      attempts++;
+      if (attempts === 1) throw new Error('Temporary exit failure');
+      document.pictureInPictureElement = null;
+    }
+  };
+  const video = {
+    async requestPictureInPicture() { document.pictureInPictureElement = video; },
+    addEventListener() {}
+  };
+  const sandbox = {
+    document,
+    window: {
+      AutoPipContent: { video: { findVideos: () => [video], isPlaying: () => true } },
+      addEventListener(_type, listener) { focusListener = listener; }
+    }
+  };
+  const run = ({ func, args }) => vm.runInNewContext(`(${func})(...args)`, { ...sandbox, args });
+  expect(await run(request)).toMatchObject({ opened: true });
+  focusListener();
+  await settle();
+  expect(document.pictureInPictureElement).toBe(video);
+
+  window.focused = true;
+  handlers.focus(window.id);
+  await run(calls[1]);
+  expect(document.pictureInPictureElement).toBeNull();
 });

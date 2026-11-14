@@ -53,10 +53,10 @@ Click the extension icon to immediately activate PiP on the current video
 ### Windows app switching (experimental)
 
 1. In the development build, open the browser's **Extensions → Keyboard shortcuts** page. Assign **Open picture-in-picture after switching Windows apps** to **Ctrl+Shift+5** and set its scope to **Global**. Choose another digit if that shortcut is already in use.
-2. From the project's root folder, start the helper in PowerShell. Use the digit you assigned and choose `chrome` or `vivaldi` for the browser.
+2. Download the matching `chrome-auto-pip-windows-<version>.ps1` from the same GitHub release as the extension. Open PowerShell in the download folder, substitute the release version in the filename, and run it with your assigned digit and either `chrome` or `vivaldi`. In a source checkout, use `.\windows\Watch-AppSwitch.ps1` as the script path.
 
    ```powershell
-   .\windows\Watch-AppSwitch.ps1 -Browser vivaldi -Digit 5
+   & '.\chrome-auto-pip-windows-<version>.ps1' -Browser vivaldi -Digit 5
    ```
 
 3. Leave the helper running while you switch between Windows apps. Returning to the video closes PiP opened by the helper. Stop the helper with **Ctrl+C**.

@@ -9,12 +9,10 @@
   let requestCount = 0;
 
   async function rememberWindow(windowId) {
-    const [window, tabs] = await Promise.all([
-      chrome.windows.get(windowId),
-      chrome.tabs.query({ active: true, windowId })
-    ]);
-    if (window.type !== 'normal') return;
-    if (tabs[0]) activeTabs.set(windowId, tabs[0]);
+    const entry = {};
+    activeTabs.set(windowId, entry);
+    const [tab] = await chrome.tabs.query({ active: true, windowId, windowType: 'normal' });
+    if (activeTabs.get(windowId) === entry) entry.tab = tab;
   }
 
   function requestPip(expectedUrl, requestId) {
@@ -33,7 +31,6 @@
     if (!video) return { reason: 'no_playing_video' };
     const exit = () => {
       if (window.__autoPipAppSwitchVideo?.requestId !== requestId) return;
-      delete window.__autoPipAppSwitchVideo;
       if (document.pictureInPictureElement === video) {
         return document.exitPictureInPicture();
       }
@@ -62,7 +59,6 @@
       func: requestId => {
         const ownership = window.__autoPipAppSwitchVideo;
         if (ownership?.requestId !== requestId || document.pictureInPictureElement !== ownership.video) return;
-        delete window.__autoPipAppSwitchVideo;
         return document.exitPictureInPicture();
       }
     }).catch(() => {});
@@ -89,7 +85,7 @@
         owner = attempt;
       }).catch(() => {});
     }
-    const selected = activeTabs.get(lastWindow) || commandTab;
+    const selected = activeTabs.get(lastWindow)?.tab || commandTab;
     if (selected) {
       open(selected);
       return;
@@ -106,14 +102,14 @@
       if (lastWindow == null) void rememberLastWindow();
       return;
     }
-    focusGeneration++;
+    const generation = ++focusGeneration;
     if (owner?.windowId === windowId) {
       const closing = owner;
       owner = undefined;
       void closePip(closing);
     }
     chrome.windows.get(windowId).then(window => {
-      if (window.type !== 'normal' || !window.focused) return;
+      if (generation !== focusGeneration || window.type !== 'normal' || !window.focused) return;
       lastWindow = windowId;
       return rememberWindow(windowId);
     }).catch(() => {});
@@ -123,24 +119,25 @@
   chrome.windows.onFocusChanged.addListener(onFocusChanged);
   chrome.windows.onRemoved.addListener(windowId => {
     activeTabs.delete(windowId);
+    if (lastWindow === windowId) lastWindow = undefined;
     if (owner?.windowId === windowId) owner = undefined;
   });
   chrome.tabs.onActivated.addListener(({ windowId }) => {
-    activeTabs.delete(windowId);
     rememberWindow(windowId).catch(() => {});
   });
   chrome.tabs.onUpdated.addListener((tabId, changes, tab) => {
-    if (activeTabs.get(tab.windowId)?.id === tabId) activeTabs.set(tab.windowId, tab);
+    const entry = activeTabs.get(tab.windowId);
+    if (entry?.tab?.id === tabId) entry.tab = tab;
   });
   chrome.tabs.onRemoved.addListener((tabId, { windowId }) => {
-    if (activeTabs.get(windowId)?.id === tabId) activeTabs.delete(windowId);
+    if (activeTabs.get(windowId)?.tab?.id === tabId) activeTabs.delete(windowId);
     if (owner?.id === tabId) owner = undefined;
   });
   function rememberLastWindow() {
     return chrome.tabs.query({ active: true, lastFocusedWindow: true, windowType: 'normal' }).then(([tab]) => {
       if (!tab || lastWindow != null) return;
       lastWindow = tab.windowId;
-      activeTabs.set(lastWindow, tab);
+      if (!activeTabs.has(lastWindow)) activeTabs.set(lastWindow, { tab });
     }).catch(() => {});
   }
   void rememberLastWindow();
