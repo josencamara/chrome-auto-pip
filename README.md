@@ -45,7 +45,7 @@ Enjoying the extension?
 ### Default Automatic Behaviour (Fresh Install)
 - `Auto PiP on Tab Switch`: **On**
 
-With default settings, switching tabs away from a playing video will automatically enter PiP.
+With default settings, switching tabs away from a playing video will automatically enter PiP. Returning to the video tab closes automatically opened PiP, including videos in embedded frames. The page visibility handler leaves manually opened PiP alone.
 
 ### Manual PiP
 Click the extension icon to immediately activate PiP on the current video

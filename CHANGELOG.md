@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-11-14
+
+### Fixed
+- Close automatically opened PiP when returning to the video tab, including requests still pending on return.
+- Run tab-return PiP cleanup in all frames so embedded players can be reached.
+- Preserve manual PiP in the new page visibility handler.
+
 ## [2.0.1] - 2026-07-22
 
 ### Fixed
