@@ -301,6 +301,8 @@
 
     async function enterPictureInPicture(details) {
         const reason = details?.enterPictureInPictureReason ?? details?.reason;
+        const startedHidden = document.visibilityState === 'hidden';
+        const returnRevision = state.returnRevision || 0;
         debugLog('page_enterpictureinpicture_start', { reason: reason || null });
         if (isDisabled()) {
             debugLog('page_enterpictureinpicture_disabled');
@@ -323,8 +325,9 @@
             await video.requestPictureInPicture();
             if (reason !== 'useraction') {
                 video.setAttribute(COMPAT_ATTR, String(Date.now()));
-                if (document.visibilityState === 'visible') {
-                    // Covers a rapid leave-and-return before the async request finishes.
+                // A native departure can arrive before the page reports itself hidden.
+                if (document.visibilityState === 'visible' &&
+                    (startedHidden || (state.returnRevision || 0) !== returnRevision)) {
                     await closeAutoPiPOnReturn();
                 }
             }
@@ -519,6 +522,7 @@
                 attemptCompatibilityPictureInPicture();
                 scheduleNativeMissWatch();
             } else {
+                state.returnRevision = (state.returnRevision || 0) + 1;
                 // Native PiP normally exits automatically. Explicitly close PiP
                 // started by our automatic path if Chromium leaves it floating.
                 void closeAutoPiPOnReturn();

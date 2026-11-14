@@ -115,7 +115,9 @@ test('browser return can retry closing PiP after the page focus exit fails', asy
   handlers.command(command);
   const [request] = calls;
   let focusListener;
+  let leaveListener;
   let attempts = 0;
+  const attributes = new Set();
   const document = {
     URL: tab.url,
     hasFocus: () => false,
@@ -124,21 +126,31 @@ test('browser return can retry closing PiP after the page focus exit fails', asy
       attempts++;
       if (attempts === 1) throw new Error('Temporary exit failure');
       document.pictureInPictureElement = null;
+      leaveListener();
     }
   };
   const video = {
     async requestPictureInPicture() { document.pictureInPictureElement = video; },
-    addEventListener() {}
+    addEventListener(_type, listener) { leaveListener = listener; },
+    setAttribute(name) { attributes.add(name); },
+    removeAttribute(name) { attributes.delete(name); },
+    hasAttribute(name) { return attributes.has(name); }
   };
   const sandbox = {
     document,
     window: {
       AutoPipContent: { video: { findVideos: () => [video], isPlaying: () => true } },
-      addEventListener(_type, listener) { focusListener = listener; }
+      addEventListener(_type, listener) { focusListener = listener; },
+      removeEventListener() {}
     }
   };
   const run = ({ func, args }) => vm.runInNewContext(`(${func})(...args)`, { ...sandbox, args });
+  const pipLibrary = readFileSync(path.join(__dirname, '../../scripts/lib/pip.js'), 'utf8');
+  vm.runInNewContext(pipLibrary, sandbox);
+  const pip = sandbox.window.AutoPipContent.pip;
+  expect(pip.isExtensionManaged(video)).toBe(false);
   expect(await run(request)).toMatchObject({ opened: true });
+  expect(pip.isExtensionManaged(video)).toBe(true);
   focusListener();
   await settle();
   expect(document.pictureInPictureElement).toBe(video);
@@ -147,4 +159,5 @@ test('browser return can retry closing PiP after the page focus exit fails', asy
   handlers.focus(window.id);
   await run(calls[1]);
   expect(document.pictureInPictureElement).toBeNull();
+  expect(pip.isExtensionManaged(video)).toBe(false);
 });

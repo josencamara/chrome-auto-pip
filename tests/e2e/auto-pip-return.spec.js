@@ -85,6 +85,17 @@ test('automatically opened PiP closes when the video tab returns', async () => {
   expect(f.document.pictureInPictureElement).toBe(null);
 });
 
+test('a native departure arriving before visibility changes keeps PiP open', async () => {
+  const f = fixture();
+  await f.visible();
+  await f.action({ enterPictureInPictureReason: 'contentoccluded' });
+  expect(f.document.pictureInPictureElement).toBe(f.video);
+  f.hidden();
+  expect(f.exits).toBe(0);
+  await f.visible();
+  expect(f.document.pictureInPictureElement).toBeNull();
+});
+
 test('automatic PiP remains identifiable after playback pauses in the background', async () => {
   const f = fixture();
   await f.action();

@@ -8,6 +8,7 @@
         owned: 'data-auto-pip-managed',
         addedAutoPip: 'data-auto-pip-added-autopictureinpicture',
         compatRequested: 'data-auto-pip-compat-requested',
+        appSwitch: 'data-auto-pip-app-switch',
         pip: '__pip__'
     };
     AutoPipContent.markers = MARKERS;
@@ -18,7 +19,8 @@
             return video.hasAttribute(MARKERS.pip) ||
                 video.hasAttribute(MARKERS.owned) ||
                 video.hasAttribute(MARKERS.addedAutoPip) ||
-                video.hasAttribute(MARKERS.compatRequested);
+                video.hasAttribute(MARKERS.compatRequested) ||
+                video.hasAttribute(MARKERS.appSwitch);
         } catch (_) {
             return false;
         }
@@ -45,6 +47,7 @@
             video.removeAttribute(MARKERS.addedAutoPip);
             video.removeAttribute(MARKERS.owned);
             video.removeAttribute(MARKERS.compatRequested);
+            video.removeAttribute(MARKERS.appSwitch);
             video.removeAttribute(MARKERS.pip);
         } catch (_) { }
     }
@@ -54,7 +57,7 @@
             if (!candidateRoot || !candidateRoot.querySelectorAll) return;
             try {
                 candidateRoot
-                    .querySelectorAll(`video[${MARKERS.owned}], video[${MARKERS.addedAutoPip}], video[${MARKERS.compatRequested}], video[${MARKERS.pip}]`)
+                    .querySelectorAll(`video[${MARKERS.owned}], video[${MARKERS.addedAutoPip}], video[${MARKERS.compatRequested}], video[${MARKERS.appSwitch}], video[${MARKERS.pip}]`)
                     .forEach(cleanupVideo);
             } catch (_) { }
         };

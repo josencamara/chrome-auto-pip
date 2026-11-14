@@ -17,7 +17,8 @@
 
   function requestPip(expectedUrl, requestId) {
     const videos = window.AutoPipContent?.video;
-    if (!videos || window.__auto_pip_disabled__ === true ||
+    const marker = window.AutoPipContent?.markers?.appSwitch;
+    if (!videos || !marker || window.__auto_pip_disabled__ === true ||
         window.__auto_pip_blocked__ === true) return { reason: 'disabled_or_unavailable' };
     if (document.URL !== expectedUrl || document.hidden || document.hasFocus()) {
       return { reason: 'source_changed_or_focused' };
@@ -38,13 +39,16 @@
     window.__autoPipAppSwitchOpening = true;
     return video.requestPictureInPicture().then(async () => {
       window.__autoPipAppSwitchVideo = { video, requestId };
+      video.setAttribute(marker, '');
       const onFocus = () => { exit()?.catch(() => {}); };
       window.addEventListener('focus', onFocus);
       video.addEventListener('leavepictureinpicture', () => {
         window.removeEventListener('focus', onFocus);
+        video.removeAttribute(marker);
         if (window.__autoPipAppSwitchVideo?.requestId === requestId) delete window.__autoPipAppSwitchVideo;
       }, { once: true });
-      if (document.hasFocus()) await exit();
+      if (document.hasFocus() || window.__auto_pip_disabled__ === true ||
+          window.__auto_pip_blocked__ === true) await exit();
       return { opened: document.pictureInPictureElement === video };
     }).catch(error => ({
       reason: 'request_rejected',
