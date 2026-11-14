@@ -92,6 +92,18 @@
         return { ok: false, status: 'skipped', reason: 'no_media_session', path };
     }
 
+    if (!window.__auto_pip_playing_listener__) {
+        document.addEventListener('playing', event => {
+            if (window.__auto_pip_disabled__ || document.hidden || !(event.target instanceof HTMLVideoElement)) return;
+            try {
+                chrome.runtime.sendMessage({ type: 'auto_pip_video_playing' }, () => {
+                    void chrome.runtime.lastError;
+                });
+            } catch (_) { }
+        }, true);
+        window.__auto_pip_playing_listener__ = true;
+    }
+
     debugLog('bridge_armed', { path });
     return { ok: true, status: 'armed', reason: 'settings_allow_auto_pip', path };
 })();

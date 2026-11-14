@@ -10,8 +10,9 @@ const {
 } = require('./local-session');
 
 const REAL_SITE_ORIGINS = [
-  'https://www.youtube.com',
-  'https://music.youtube.com',
+  'https://www.w3schools.com',
+  'https://www.w3.org',
+  'https://vjs.zencdn.net',
   'https://shaka-player-demo.appspot.com',
   'https://www.twitch.tv',
   'https://meet.google.com',
@@ -19,9 +20,9 @@ const REAL_SITE_ORIGINS = [
 ];
 
 const CHECKS = [
-  { name: 'youtube-muted', url: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ&autoplay=1&mute=1', kind: 'video', muted: true },
-  { name: 'youtube-unmuted', url: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ&autoplay=1', kind: 'video', muted: false },
-  { name: 'youtube-music', url: 'https://music.youtube.com/', kind: 'arm-only' },
+  { name: 'w3schools-video', url: 'https://www.w3schools.com/html/html5_video.asp', kind: 'video', muted: false },
+  { name: 'w3c-video', url: 'https://www.w3.org/2010/05/video/mediaevents', kind: 'video', muted: false },
+  { name: 'videojs-oceans', url: 'https://vjs.zencdn.net/v/oceans.mp4', kind: 'video', muted: false },
   { name: 'shaka-demo', url: 'https://shaka-player-demo.appspot.com/demo/', kind: 'arm-only' },
   { name: 'twitch-gesture', url: 'https://www.twitch.tv/twitch', kind: 'gesture-video' },
   { name: 'meet-disabled', url: 'https://meet.google.com/', kind: 'disabled', hostPattern: 'meet.google.com' },
@@ -169,12 +170,15 @@ async function runVideoSwitchCheck(session, check, artifactDir) {
     }
 
     await page.bringToFront().catch(() => {});
-    await poll(
+    const returned = await poll(
       () => page.evaluate(videoStateScript()).catch(error => ({ error: error.message })),
       state => state && state.pip === false,
       10000,
       500
     );
+    if (!returned || returned.pip !== false) {
+      return failed('pip_did_not_close_on_tab_return', { state: returned });
+    }
     await blank.bringToFront().catch(() => {});
     const secondPip = await poll(
       () => page.evaluate(videoStateScript()).catch(error => ({ error: error.message })),
@@ -186,7 +190,7 @@ async function runVideoSwitchCheck(session, check, artifactDir) {
       return failed('pip_not_started_on_repeat_tab_switch', { state: secondPip });
     }
 
-    return passed({ armed, firstPip, secondPip });
+    return passed({ armed, firstPip, returned, secondPip });
   } finally {
     await blank.close().catch(() => {});
     await page.close().catch(() => {});
@@ -276,6 +280,12 @@ async function runCheck(session, check, artifactDir) {
 }
 
 async function main() {
+  const names = process.argv.slice(2);
+  const checks = names.length ? names.map(name => {
+    const check = CHECKS.find(candidate => candidate.name === name);
+    if (!check) throw new Error(`Unknown real-site check: ${name}`);
+    return check;
+  }) : CHECKS;
   const artifactDir = createArtifactDir('sites');
   const enabled = process.env.AUTO_PIP_REAL_SITES === '1';
   const startedAt = new Date().toISOString();
@@ -289,7 +299,7 @@ async function main() {
   };
 
   if (!enabled) {
-    summary.checks = CHECKS.map(check => ({ name: check.name, ...skipped('AUTO_PIP_REAL_SITES is not 1') }));
+    summary.checks = checks.map(check => ({ name: check.name, ...skipped('AUTO_PIP_REAL_SITES is not 1') }));
     summary.ok = true;
     writeJson(path.join(artifactDir, 'summary.json'), summary);
     console.log(`Real-site smoke skipped. Set AUTO_PIP_REAL_SITES=1 to run. Artifacts: ${artifactDir}`);
@@ -302,7 +312,7 @@ async function main() {
     autoPiPOrigins: REAL_SITE_ORIGINS
   });
   if (session.skipped) {
-    summary.checks = CHECKS.map(check => ({ name: check.name, ...skipped(session.skipReason) }));
+    summary.checks = checks.map(check => ({ name: check.name, ...skipped(session.skipReason) }));
     summary.ok = true;
     writeJson(path.join(artifactDir, 'summary.json'), summary);
     console.log(`${session.skipReason} Artifacts: ${artifactDir}`);
@@ -316,7 +326,7 @@ async function main() {
       autoPipDebugText: ''
     }));
 
-    for (const check of CHECKS) {
+    for (const check of checks) {
       const started = Date.now();
       try {
         const result = await runCheck(session, check, artifactDir);

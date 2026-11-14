@@ -74,15 +74,16 @@
         }
 
         markOwned(video, {
-            compat: options.compat === true,
             ensureAutoPipAttr: options.ensureAutoPipAttr === true
         });
 
         try {
             await video.requestPictureInPicture();
+            if (options.compat === true) video.setAttribute(MARKERS.compatRequested, String(Date.now()));
             video.setAttribute(MARKERS.pip, 'true');
             video.addEventListener('leavepictureinpicture', () => {
                 try { video.removeAttribute(MARKERS.pip); } catch (_) { }
+                if (options.compat === true) video.removeAttribute(MARKERS.compatRequested);
                 if (hadDisableAttr && options.allowDisablePictureInPictureOverride === true) {
                     try { video.setAttribute('disablePictureInPicture', ''); } catch (_) { }
                 }

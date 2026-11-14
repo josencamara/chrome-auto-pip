@@ -45,5 +45,11 @@
   ],
   "minimum_chrome_version": "134",
   "author": "Alex Potenza",
-  "homepage_url": "https://github.com/apotenza92/chrome-auto-pip"
+  "homepage_url": "https://github.com/apotenza92/chrome-auto-pip",
+  "commands": {
+    "open-pip-after-app-switch": {
+      "description": "Open picture-in-picture after switching Windows apps",
+      "global": true
+    }
+  }
 }

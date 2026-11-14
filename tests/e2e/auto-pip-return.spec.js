@@ -11,6 +11,8 @@ function fixture({ delayed = false, rejectExit = false } = {}) {
   let complete;
   let action;
   let exits = 0;
+  let refresh;
+  let registrations = 0;
   class Video {
     constructor() {
       Object.assign(this, { paused: false, ended: false, readyState: 4,
@@ -41,15 +43,23 @@ function fixture({ delayed = false, rejectExit = false } = {}) {
   window.top = window;
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../scripts/page-auto-pip.js'), 'utf8'), {
     window, document, navigator: { mediaSession: {
-      setActionHandler: (name, handler) => { action = handler; }
+      setActionHandler: (name, handler) => { action = handler; registrations += 1; }
     }, userActivation: { isActive: false } },
     HTMLVideoElement: Video, location: { href: 'https://example.com/video' }, URL,
-    MutationObserver: class { observe() {} }, setTimeout: () => 1, clearTimeout() {},
+    MutationObserver: class { observe() {} },
+    setTimeout: callback => { refresh = callback; return 1; }, clearTimeout() {},
     Set
   });
   return {
     video, document, action, get exits() { return exits; },
+    get registrations() { return registrations; },
+    hidden() { document.visibilityState = 'hidden'; listeners.visibilitychange(); },
     complete: () => complete(),
+    pause() {
+      video.paused = true;
+      listeners.pause({ target: video });
+      refresh();
+    },
     async visible() {
       document.visibilityState = 'visible';
       listeners.visibilitychange();
@@ -58,10 +68,27 @@ function fixture({ delayed = false, rejectExit = false } = {}) {
   };
 }
 
+test('hiding the video preserves the already armed media handler', async () => {
+  const f = fixture();
+  await f.visible();
+  const registeredBeforeSwitch = f.registrations;
+  f.hidden();
+  expect(f.registrations).toBe(registeredBeforeSwitch);
+});
+
 test('automatically opened PiP closes when the video tab returns', async () => {
   const f = fixture();
   await f.action();
   expect(f.document.pictureInPictureElement).toBe(f.video);
+  await f.visible();
+  expect(f.exits).toBe(1);
+  expect(f.document.pictureInPictureElement).toBe(null);
+});
+
+test('automatic PiP remains identifiable after playback pauses in the background', async () => {
+  const f = fixture();
+  await f.action();
+  f.pause();
   await f.visible();
   expect(f.exits).toBe(1);
   expect(f.document.pictureInPictureElement).toBe(null);
@@ -83,6 +110,15 @@ test('the visibility handler preserves manually opened PiP', async () => {
   await f.visible();
   expect(f.exits).toBe(0);
   expect(f.document.pictureInPictureElement).toBe(f.video);
+});
+
+test('a user request from browser media controls stays open on the visible tab', async () => {
+  const f = fixture();
+  await f.visible();
+  await f.action({ enterPictureInPictureReason: 'useraction' });
+  expect(f.exits).toBe(0);
+  expect(f.document.pictureInPictureElement).toBe(f.video);
+  expect(f.video.hasAttribute('data-auto-pip-compat-requested')).toBe(false);
 });
 
 test('return cleanup failure is handled and can be retried', async () => {
@@ -119,4 +155,116 @@ test('return cleanup injects into all frames in the page world', () => {
   expect(injections[0].target).toEqual({ tabId: 42, allFrames: true });
   expect(injections[0].world).toBe('MAIN');
   expect(injections[0].files).toContain('./scripts/exit-pip.js');
+});
+
+test('a stale tab lookup cannot take over after a second activation', () => {
+  const queries = new Map();
+  const registered = [];
+  const state = { currentTab: null, targetTab: null, autoPipOnTabSwitch: true };
+  const sandbox = {
+    AutoPip: {
+      state, constants: {}, debug: { debugLog() {} },
+      urlRules: { isAutoPipAllowedTab: () => true },
+      inject: {
+        registerTabForAutoPip: (id, callback) => registered.push(id),
+        injectExitPiPScript() {}
+      }
+    },
+    chrome: { runtime: {}, tabs: { get: (id, callback) => queries.set(id, callback) } }
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../background/tab-switch.js'), 'utf8'), sandbox);
+  sandbox.AutoPip.tabSwitch.handleTabActivated({ tabId: 1 });
+  sandbox.AutoPip.tabSwitch.handleTabActivated({ tabId: 2 });
+  queries.get(2)({ id: 2 });
+  const registrationsAfterLatestReply = [...registered];
+  queries.get(1)({ id: 1 });
+  expect(state.currentTab).toBe(2);
+  expect(registered).toEqual(registrationsAfterLatestReply);
+});
+
+test('a pending departure skips its compatibility request after returning', () => {
+  const registrations = [];
+  const requests = [];
+  const state = { currentTab: 1, targetTab: 1, autoPipOnTabSwitch: true };
+  const sandbox = {
+    AutoPip: {
+      state, constants: {}, debug: { debugLog() {} }, urlRules: {},
+      inject: {
+        registerTabForAutoPip: (id, callback) => registrations.push({ id, callback }),
+        injectRequestPlayingPiPScript: id => requests.push(id)
+      }
+    },
+    chrome: { tabs: { get() {} } }
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../background/tab-switch.js'), 'utf8'), sandbox);
+  sandbox.AutoPip.tabSwitch.handleTabActivated({ tabId: 1, windowId: 10 });
+  sandbox.AutoPip.tabSwitch.handleTabActivated({ tabId: 3, windowId: 11 });
+  expect(registrations).toEqual([]);
+  sandbox.AutoPip.tabSwitch.handleTabActivated({ tabId: 2, windowId: 10 });
+  expect(registrations[0].id).toBe(1);
+  sandbox.AutoPip.tabSwitch.handleTabActivated({ tabId: 1, windowId: 10 });
+  registrations[0].callback();
+  expect(requests).toEqual([]);
+});
+
+test('playback arms the active source in another window without replacing the current target', () => {
+  const registrations = [];
+  const state = {
+    currentTab: 1, targetTab: 1, autoPipOnTabSwitch: true, lastVideoPlayingTargetedAtByTab: {}
+  };
+  const sandbox = {
+    AutoPip: {
+      state, constants: { VIDEO_PLAYING_MESSAGE_THROTTLE_MS: 1000 }, debug: { debugLog() {} },
+      urlRules: { isAutoPipAllowedTab: () => true },
+      inject: { registerTabForAutoPip: id => registrations.push(id) }
+    }
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../background/tab-switch.js'), 'utf8'), sandbox);
+  const onPlaying = sandbox.AutoPip.tabSwitch.handleVideoPlayingMessage;
+  onPlaying({ id: 2, windowId: 10, active: true });
+  onPlaying({ id: 2, windowId: 10, active: true });
+  onPlaying({ id: 3, windowId: 10, active: false });
+  expect(registrations).toEqual([2]);
+  expect(state.targetTab).toBe(1);
+});
+
+test('compatibility PiP uses browser tab selection when page visibility is stale', async () => {
+  const video = {};
+  const document = { visibilityState: 'visible', pictureInPictureElement: null };
+  let requests = 0;
+  let inactive = false;
+  let returnOnRequest = false;
+  const sandbox = {
+    document,
+    chrome: { runtime: { async sendMessage() { return { inactive }; } } },
+    window: { AutoPipContent: {
+      video: {
+        result: (ok, status, reason) => ({ ok, status, reason }),
+        findVideos: () => [video],
+        isPlaying: () => true
+      },
+      pip: {
+        async request() {
+          requests++;
+          if (returnOnRequest) inactive = false;
+          document.pictureInPictureElement = video;
+        },
+        async exitOwned() { document.pictureInPictureElement = null; }
+      }
+    } }
+  };
+  video.requestPictureInPicture = () => {};
+  const script = fs.readFileSync(path.join(__dirname, '../../scripts/request-playing-pip.js'), 'utf8');
+  expect(await vm.runInNewContext(script, sandbox)).toMatchObject({ reason: 'tab_active_or_unavailable' });
+  expect(requests).toBe(0);
+
+  inactive = true;
+  expect(await vm.runInNewContext(script, sandbox)).toMatchObject({ status: 'success' });
+  expect(document.pictureInPictureElement).toBe(video);
+  document.pictureInPictureElement = null;
+
+  returnOnRequest = true;
+  expect(await vm.runInNewContext(script, sandbox)).toMatchObject({ reason: 'tab_returned' });
+  expect(requests).toBe(2);
+  expect(document.pictureInPictureElement).toBe(null);
 });

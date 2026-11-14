@@ -17,3 +17,5 @@ importScripts(
   AutoPip.messages.initRuntimeListeners();
   AutoPip.tabSwitch.initTabListeners();
 })();
+
+importScripts('./background/app-switch.js');

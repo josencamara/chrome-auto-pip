@@ -163,7 +163,7 @@
             }
             video.removeAttribute(ADDED_AUTOPIP_ATTR);
             video.removeAttribute(OWNED_ATTR);
-            video.removeAttribute(COMPAT_ATTR);
+            if (document.pictureInPictureElement !== video) video.removeAttribute(COMPAT_ATTR);
         } catch (_) { }
     }
 
@@ -255,6 +255,7 @@
         try {
             video.addEventListener('enterpictureinpicture', () => notifyPiPState(true));
             video.addEventListener('leavepictureinpicture', () => {
+                video.removeAttribute(COMPAT_ATTR);
                 notifyPiPState(false);
                 scheduleAutoPiPRearm('leavepictureinpicture');
             });
@@ -275,8 +276,19 @@
         const hasPlaying = videos.some(isPlaying);
         try {
             navigator.mediaSession.playbackState = hasPlaying ? 'playing' : 'paused';
-            navigator.mediaSession.setActionHandler('enterpictureinpicture', enterPictureInPicture);
         } catch (_) { }
+        // Keep the armed handler stable while Chromium dispatches the hidden-tab action.
+        if (document.visibilityState !== 'hidden' || state.registered !== true) {
+            try {
+                navigator.mediaSession.setActionHandler('enterpictureinpicture', enterPictureInPicture);
+                state.registered = true;
+            } catch (error) {
+                state.registered = false;
+                if (options.forceLog === true) {
+                    debugLog('page_media_session_handler_failed', { name: error.name, message: error.message });
+                }
+            }
+        }
 
         state.hasPlaying = hasPlaying;
         const stats = getVideoStats(videos);
@@ -287,8 +299,9 @@
         return hasPlaying;
     }
 
-    async function enterPictureInPicture() {
-        debugLog('page_enterpictureinpicture_start');
+    async function enterPictureInPicture(details) {
+        const reason = details?.enterPictureInPictureReason ?? details?.reason;
+        debugLog('page_enterpictureinpicture_start', { reason: reason || null });
         if (isDisabled()) {
             debugLog('page_enterpictureinpicture_disabled');
             return false;
@@ -308,12 +321,12 @@
             syncVideo(video);
             attachPiPStateBridge(video);
             await video.requestPictureInPicture();
-            // This request came from the automatic MediaSession handler.
-            // Record the origin so returning to the tab does not close manual PiP.
-            video.setAttribute(COMPAT_ATTR, String(Date.now()));
-            if (document.visibilityState === 'visible') {
-                // Covers a rapid leave-and-return before the async request finishes.
-                await closeAutoPiPOnReturn();
+            if (reason !== 'useraction') {
+                video.setAttribute(COMPAT_ATTR, String(Date.now()));
+                if (document.visibilityState === 'visible') {
+                    // Covers a rapid leave-and-return before the async request finishes.
+                    await closeAutoPiPOnReturn();
+                }
             }
             debugLog('page_enterpictureinpicture_success', {
                 readyState: video.readyState,
@@ -535,5 +548,6 @@
         debugLog('page_listeners_registered', { listenerVersion: LISTENER_VERSION });
     }
 
-    return { ok: true, hasPlaying: updateRegistration({ forceLog: true }) };
+    const hasPlaying = updateRegistration({ forceLog: true });
+    return { ok: state.registered === true, hasPlaying };
 })();

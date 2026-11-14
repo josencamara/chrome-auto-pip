@@ -4,6 +4,10 @@
     const videoLib = window.AutoPipContent && window.AutoPipContent.video;
     const pip = window.AutoPipContent && window.AutoPipContent.pip;
     const path = 'tab_leave_compat';
+    const isBackgroundTab = async () => {
+        const response = await chrome.runtime.sendMessage({ type: 'auto_pip_is_background_tab' }).catch(() => null);
+        return response?.inactive === true;
+    };
 
     try {
         if (!videoLib || !pip) {
@@ -16,6 +20,10 @@
 
         if (document.pictureInPictureElement) {
             return videoLib.result(true, 'already_active', 'already_active', path, document.pictureInPictureElement);
+        }
+
+        if (!await isBackgroundTab()) {
+            return videoLib.result(false, 'skipped', 'tab_active_or_unavailable', path, null);
         }
 
         const candidates = videoLib.findVideos({
@@ -39,6 +47,10 @@
             ensureAutoPipAttr: true,
             compat: true
         });
+        if (document.pictureInPictureElement === video && !await isBackgroundTab()) {
+            await pip.exitOwned();
+            return videoLib.result(false, 'skipped', 'tab_returned', path, video);
+        }
         return videoLib.result(true, 'success', 'requested_picture_in_picture', path, video);
     } catch (error) {
         return {

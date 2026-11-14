@@ -162,6 +162,14 @@
       }
 
       if (!message || !sender || !sender.tab) return;
+      if (message.type === 'auto_pip_is_background_tab') {
+        sendResponse({
+          inactive: sender.tab.active === false &&
+            AutoPip.state.autoPipOnTabSwitch &&
+            isAutoPipAllowedTab(sender.tab)
+        });
+        return;
+      }
       if (message.type === 'auto_pip_video_playing') {
         AutoPip.tabSwitch.handleVideoPlayingMessage(sender.tab);
       }

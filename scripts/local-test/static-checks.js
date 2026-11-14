@@ -31,7 +31,7 @@ function listJsFiles(dir) {
       if (entry.isDirectory()) {
         walk(full);
       } else if (entry.isFile() && entry.name.endsWith('.js')) {
-        out.push(path.relative(repoRoot, full));
+        out.push(path.relative(repoRoot, full).split(path.sep).join('/'));
       }
     });
   };

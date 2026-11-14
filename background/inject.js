@@ -160,8 +160,8 @@
         if (callback) callback(results);
         return;
       }
-      injectPageAutoPiPScript(tabId, () => {
-        if (callback) callback(results);
+      injectPageAutoPiPScript(tabId, (pageResults) => {
+        if (callback) callback(pageResults);
       });
     }, { policy: INJECTION_POLICIES.topFrameOnly });
   }
