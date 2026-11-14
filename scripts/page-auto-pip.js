@@ -162,13 +162,15 @@
                 video.removeAttribute('autopictureinpicture');
             }
             video.removeAttribute(ADDED_AUTOPIP_ATTR);
-            video.removeAttribute(OWNED_ATTR);
-            if (document.pictureInPictureElement !== video) video.removeAttribute(COMPAT_ATTR);
+            if (document.pictureInPictureElement !== video) {
+                video.removeAttribute(OWNED_ATTR);
+                video.removeAttribute(COMPAT_ATTR);
+            }
         } catch (_) { }
     }
 
     function disarmVideoForRearm(video) {
-        if (!video) return false;
+        if (!video || document.pictureInPictureElement === video) return false;
         try {
             const wasManaged = video.hasAttribute(OWNED_ATTR) || video.hasAttribute(ADDED_AUTOPIP_ATTR);
             if (!wasManaged) return false;

@@ -4,27 +4,15 @@ const { launchLocalContext, waitForExtensionWorker } = require('../../scripts/lo
 const test = base.extend({
   context: async ({}, use) => {
     let session = null;
-    let worker = null;
-
     for (let attempt = 1; attempt <= 2; attempt += 1) {
-      session = await launchLocalContext({
-        artifactPrefix: 'playwright',
-        autoPiPOrigins: ['https://www.youtube.com', 'https://music.youtube.com', 'https://shaka-player-demo.appspot.com']
-      });
-      if (session.skipped) {
-        throw new Error(session.skipReason);
-      }
-
       try {
-        worker = session.worker || await waitForExtensionWorker(session.context);
-        session.context.__autoPipExtensionWorker = worker;
+        session = await launchLocalContext({ artifactPrefix: 'playwright' });
         break;
       } catch (error) {
-        await session.close();
-        session = null;
-        if (attempt >= 2) throw error;
+        if (attempt >= 2 || error.code !== 'AUTO_PIP_WORKER_STARTUP') throw error;
       }
     }
+    if (session.skipped) throw new Error(session.skipReason);
 
     try {
       await use(session.context);

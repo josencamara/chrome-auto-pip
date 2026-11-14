@@ -82,6 +82,7 @@
 
         try {
             await video.requestPictureInPicture();
+            video.setAttribute(MARKERS.owned, '');
             if (options.compat === true) video.setAttribute(MARKERS.compatRequested, String(Date.now()));
             video.setAttribute(MARKERS.pip, 'true');
             video.addEventListener('leavepictureinpicture', () => {

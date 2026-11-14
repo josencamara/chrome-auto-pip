@@ -105,6 +105,14 @@ test('automatic PiP remains identifiable after playback pauses in the background
   expect(f.document.pictureInPictureElement).toBe(null);
 });
 
+test('pausing a toolbar PiP keeps its ownership while the window is open', () => {
+  const f = fixture();
+  f.document.pictureInPictureElement = f.video;
+  f.video.setAttribute('data-auto-pip-managed', '');
+  f.pause();
+  expect(f.video.hasAttribute('data-auto-pip-managed')).toBe(true);
+});
+
 test('a return while the automatic PiP request is pending closes on completion', async () => {
   const f = fixture({ delayed: true });
   const pending = f.action();
