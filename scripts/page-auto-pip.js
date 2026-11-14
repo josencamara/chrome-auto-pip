@@ -226,6 +226,23 @@
         }
     }
 
+    async function closeAutoPiPOnReturn() {
+        if (document.visibilityState !== 'visible') return false;
+        const video = document.pictureInPictureElement;
+        if (!video || !video.hasAttribute(COMPAT_ATTR)) return false;
+        try {
+            await document.exitPictureInPicture();
+            video.removeAttribute(COMPAT_ATTR);
+            debugLog('page_auto_pip_closed_on_return');
+            return true;
+        } catch (error) {
+            debugLog('page_auto_pip_return_close_failed', {
+                message: error && error.message ? error.message : String(error)
+            });
+            return false;
+        }
+    }
+
     function notifyPiPState(inPictureInPicture) {
         debugLog('page_pip_state_changed', {
             inPictureInPicture: inPictureInPicture === true
@@ -291,6 +308,13 @@
             syncVideo(video);
             attachPiPStateBridge(video);
             await video.requestPictureInPicture();
+            // This request came from the automatic MediaSession handler.
+            // Record the origin so returning to the tab does not close manual PiP.
+            video.setAttribute(COMPAT_ATTR, String(Date.now()));
+            if (document.visibilityState === 'visible') {
+                // Covers a rapid leave-and-return before the async request finishes.
+                await closeAutoPiPOnReturn();
+            }
             debugLog('page_enterpictureinpicture_success', {
                 readyState: video.readyState,
                 currentTime: video.currentTime
@@ -482,6 +506,9 @@
                 attemptCompatibilityPictureInPicture();
                 scheduleNativeMissWatch();
             } else {
+                // Native PiP normally exits automatically. Explicitly close PiP
+                // started by our automatic path if Chromium leaves it floating.
+                void closeAutoPiPOnReturn();
                 state.compatAttemptToken = (state.compatAttemptToken || 0) + 1;
                 clearNativeMissWatch('visible');
                 updateRegistration({ forceLog: true });

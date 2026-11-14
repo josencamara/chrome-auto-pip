@@ -175,7 +175,8 @@
   function injectExitPiPScript(tabId, callback) {
     injectWithLib(tabId, ['./scripts/exit-pip.js'], callback, {
       allowBlocked: true,
-      policy: INJECTION_POLICIES.topFrameOnly,
+      // The playing video can live inside an iframe.
+      policy: INJECTION_POLICIES.allFrames,
       world: 'MAIN'
     });
   }
