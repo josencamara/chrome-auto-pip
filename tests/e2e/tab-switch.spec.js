@@ -45,7 +45,7 @@ async function videoFlags(page) {
   });
 }
 
-test('tab switch setting, paused skip, and repeated muted compatibility PiP', async ({ context, page, extensionId }) => {
+test('assisted setting, paused skip, and native-only tab leave', async ({ context, page, extensionId }) => {
   test.setTimeout(120000);
 
   const worker = context.__autoPipExtensionWorker || context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
@@ -118,23 +118,14 @@ test('tab switch setting, paused skip, and repeated muted compatibility PiP', as
     });
 
     await blankPage.bringToFront();
-    await expect.poll(async () => videoFlags(videoPage), { timeout: 10000 }).toMatchObject({
-      inPictureInPicture: true,
-      compatRequested: true,
-      owned: true
-    });
-
+    await blankPage.waitForTimeout(1100);
+    // Native eligibility is Chrome's decision; deterministic tests separately
+    // assert that visibility changes never issue an extension PiP request.
+    const flags = await videoFlags(videoPage);
+    expect(flags.playing).toBe(true);
     await videoPage.bringToFront();
-    await expect.poll(async () => videoFlags(videoPage), { timeout: 10000 }).toMatchObject({
-      inPictureInPicture: false,
-      playing: true
-    });
-
-    await blankPage.bringToFront();
-    await expect.poll(async () => videoFlags(videoPage), { timeout: 10000 }).toMatchObject({
-      inPictureInPicture: true,
-      playing: true,
-      muted: true
+    await expect.poll(async () => videoFlags(videoPage)).toMatchObject({
+      playing: true, autoPipAttr: true
     });
   } finally {
     await Promise.all(openedPages.map(openPage => openPage.isClosed() ? null : openPage.close().catch(() => {})));

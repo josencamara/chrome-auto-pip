@@ -110,6 +110,12 @@
       }
 
       const runInjection = () => {
+        const automatic = files.includes('./scripts/page-auto-pip.js') ||
+          files.includes('./scripts/trigger-auto-pip.js');
+        if (automatic && AutoPip.state.nativeAutoPip) {
+          if (callback) callback(null);
+          return;
+        }
         if (!allowBlocked && !isAutoPipAllowedUrl(tab.url)) {
           if (callback) callback(null);
           return;
@@ -148,6 +154,7 @@
   }
 
   function injectPageAutoPiPScript(tabId, callback) {
+    if (AutoPip.state.nativeAutoPip) { if (callback) callback(null); return; }
     safeExecuteScript(tabId, ['./scripts/page-auto-pip.js'], callback, {
       policy: INJECTION_POLICIES.topFrameOnly,
       world: 'MAIN'
@@ -155,6 +162,7 @@
   }
 
   function injectTriggerAutoPiP(tabId, callback) {
+    if (AutoPip.state.nativeAutoPip) { if (callback) callback(null); return; }
     injectWithSettings(tabId, ['./scripts/trigger-auto-pip.js'], (results) => {
       if (!hasAnyFrameTrue(results)) {
         if (callback) callback(results);
@@ -188,12 +196,6 @@
     });
   }
 
-  function injectRequestPlayingPiPScript(tabId, callback) {
-    injectWithLib(tabId, ['./scripts/request-playing-pip.js'], callback, {
-      policy: INJECTION_POLICIES.topFrameThenAllFrames
-    });
-  }
-
   function injectDisableAutoPiPScript(tabId, callback) {
     injectWithLib(tabId, ['./scripts/disable-auto-pip.js'], callback, {
       allowBlocked: true,
@@ -208,7 +210,7 @@
   }
 
   function registerTabForAutoPip(tabId, callback) {
-    if (tabId == null || !AutoPip.state.autoPipOnTabSwitch) {
+    if (AutoPip.state.nativeAutoPip || tabId == null || !AutoPip.state.autoPipOnTabSwitch) {
       debugLog('background', 'register_skip', { tabId, autoPipOnTabSwitch: AutoPip.state.autoPipOnTabSwitch });
       if (callback) callback(null);
       return;
@@ -234,7 +236,6 @@
     injectCheckVideoScript,
     injectExitPiPScript,
     injectImmediatePiPScript,
-    injectRequestPlayingPiPScript,
     injectDisableAutoPiPScript,
     injectDisableAndExitAutoPiPScript,
     registerTabForAutoPip,

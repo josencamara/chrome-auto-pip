@@ -24,6 +24,7 @@
     DEFAULT_ACTION_TITLE: 'Picture-in-Picture',
     BLOCKED_ACTION_TITLE: 'Auto PiP blocked. Allow Automatic Picture-in-Picture for this site.',
     STORAGE_KEYS: {
+      nativeAutoPip: 'nativeAutoPip',
       autoPipOnTabSwitch: 'autoPipOnTabSwitch',
       autoPipEnabled: 'autoPipEnabled',
       autoPipSiteBlocklist: 'autoPipSiteBlocklist',
@@ -42,7 +43,6 @@
     PATHS: {
       native: 'native',
       manual: 'manual',
-      tabLeaveCompat: 'tab_leave_compat',
       cleanup: 'cleanup',
       check: 'check'
     },
@@ -58,6 +58,7 @@
     prevTab: null,
     targetTab: null,
     pipActiveTab: null,
+    nativeAutoPip: true,
     autoPipOnTabSwitch: true,
     autoPipSiteBlocklist: AutoPip.constants.DEFAULT_BLOCKED_SITES.slice(),
     settingsLoaded: false,

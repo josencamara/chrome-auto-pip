@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Changed
+- Default to native automatic PiP: preserve Chrome/site handlers, playback state, and video attributes; leave opening and return cleanup to Chrome.
+- Keep the manual toolbar button available in native mode and expose optional assistance for sites without their own support.
+- Keep existing assistance preferences, but default existing profiles without an explicit mode to native behavior. Reload open video tabs after updating.
+- Register the optional assistance handler once per page rather than repeatedly replacing the site's handler.
+
+### Removed
+- Remove both page and background tab-leave fallback PiP requests and the delayed attribute rearming loop.
+
+### Tests
+- Cover native defaults and upgrades, offline settings, injection guards, manual actions, mode changes, and lack of visibility-triggered fallback requests.
+- Add headless Chromium checks that site Media Session state and video attributes survive playback, tab switches, settings changes, and options reload.
+
 ## [2.0.2] - 2026-11-14
 
 ### Fixed

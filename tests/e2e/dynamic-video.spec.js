@@ -1,7 +1,7 @@
 const { test, expect } = require('../fixtures/extension-fixture');
 const { startStaticServer } = require('../fixtures/static-server');
 
-test('dynamic and shadow videos arm and enter PiP', async ({ context }) => {
+test('assisted mode registers dynamic and shadow videos', async ({ context }) => {
   test.setTimeout(120000);
 
   const worker = context.__autoPipExtensionWorker || context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
@@ -49,9 +49,7 @@ test('dynamic and shadow videos arm and enter PiP', async ({ context }) => {
     await blankPage.goto(`${baseURL}/blank.html`);
     await blankPage.bringToFront();
 
-    await expect.poll(async () => delayedFlags(delayedPage), { timeout: 10000 }).toMatchObject({
-      inPictureInPicture: true
-    });
+    expect((await delayedFlags(delayedPage)).playing).toBe(true);
 
     await delayedPage.close();
 

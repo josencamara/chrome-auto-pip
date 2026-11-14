@@ -25,15 +25,6 @@
         } catch (_) { }
     };
 
-    if (!window.__auto_pip_page_debug_listener__) {
-        window.addEventListener('message', (event) => {
-            const data = event && event.data;
-            if (!data || data.source !== 'chrome-auto-pip-v2-page') return;
-            debugLog(data.event || 'page_unknown', data.details || {});
-        });
-        window.__auto_pip_page_debug_listener__ = true;
-    }
-
     if (!settingsLib) {
         debugLog('bridge_failed', { reason: 'missing_settings_lib' });
         return { ok: false, status: 'failed', reason: 'missing_settings_lib', path };
@@ -44,9 +35,23 @@
         settings = await settingsLib.getSettings();
     } catch (_) {
         settings = {
+            nativeAutoPip: true,
             autoPipOnTabSwitch: true,
             autoPipSiteBlocklist: settingsLib.DEFAULT_BLOCKED_SITES
         };
+    }
+
+    if (settings.nativeAutoPip !== false) {
+        return { ok: true, status: 'skipped', reason: 'native_mode', path };
+    }
+
+    if (!window.__auto_pip_page_debug_listener__) {
+        window.addEventListener('message', (event) => {
+            const data = event && event.data;
+            if (!data || data.source !== 'chrome-auto-pip-v2-page') return;
+            debugLog(data.event || 'page_unknown', data.details || {});
+        });
+        window.__auto_pip_page_debug_listener__ = true;
     }
 
     const hostname = settingsLib.hostname();

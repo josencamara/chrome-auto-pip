@@ -52,6 +52,7 @@
     try {
       try {
         local = await chrome.storage.local.get([
+          STORAGE_KEYS.nativeAutoPip,
           STORAGE_KEYS.autoPipOnTabSwitch,
           STORAGE_KEYS.autoPipEnabled,
           STORAGE_KEYS.autoPipSiteBlocklist,
@@ -69,11 +70,16 @@
       } catch (_) { }
 
       const result = await chrome.storage.sync.get([
+        STORAGE_KEYS.nativeAutoPip,
         STORAGE_KEYS.autoPipOnTabSwitch,
         STORAGE_KEYS.autoPipEnabled,
         STORAGE_KEYS.autoPipSiteBlocklist,
         STORAGE_KEYS.autoPipBlocklistDefaultsVersion
       ]);
+
+      state.nativeAutoPip = result.nativeAutoPip !== undefined
+        ? result.nativeAutoPip !== false
+        : local.nativeAutoPip !== false;
 
       const migrated = await migrateAutoPipSettings(result);
       const effective = { ...result, ...(migrated || {}) };
@@ -103,16 +109,20 @@
 
       try {
         await chrome.storage.local.set({
+          nativeAutoPip: state.nativeAutoPip,
           autoPipOnTabSwitch: state.autoPipOnTabSwitch,
           autoPipSiteBlocklist: state.autoPipSiteBlocklist,
           autoPipBlocklistDefaultsVersion: migratedBlocklist.version
         });
       } catch (_) { }
     } catch (_) {
-      state.autoPipOnTabSwitch = true;
+      state.nativeAutoPip = local.nativeAutoPip !== false;
+      state.autoPipOnTabSwitch = typeof local.autoPipOnTabSwitch === 'boolean'
+        ? local.autoPipOnTabSwitch : true;
       state.autoPipSiteBlocklist = DEFAULT_BLOCKED_SITES.slice();
       try {
         await chrome.storage.local.set({
+          nativeAutoPip: state.nativeAutoPip,
           autoPipOnTabSwitch: state.autoPipOnTabSwitch,
           autoPipSiteBlocklist: state.autoPipSiteBlocklist,
           autoPipBlocklistDefaultsVersion: BLOCKLIST_DEFAULTS_VERSION
@@ -121,6 +131,7 @@
     } finally {
       state.settingsLoaded = true;
       debugLog('background', 'settings_loaded', {
+        nativeAutoPip: state.nativeAutoPip,
         autoPipOnTabSwitch: state.autoPipOnTabSwitch,
         blocklistCount: Array.isArray(state.autoPipSiteBlocklist) ? state.autoPipSiteBlocklist.length : 0
       });
@@ -146,6 +157,8 @@
       try { chrome.storage.local.set({ autoPipOnTabSwitch: state.autoPipOnTabSwitch }); } catch (_) { }
     }
 
+    if (state.nativeAutoPip) return;
+
     if (state.autoPipOnTabSwitch) {
       if (changed) {
         AutoPip.tabSwitch.registerAllowedTabs();
@@ -162,7 +175,7 @@
     if (changed) state.prevTab = null;
   }
 
-  function handleStorageChanged(changes, namespace) {
+  async function handleStorageChanged(changes, namespace) {
     if (namespace !== 'sync' && namespace !== 'local') return;
     const changedKeys = Object.keys(changes || {}).filter(key =>
       key !== STORAGE_KEYS.autoPipDebugLog &&
@@ -172,6 +185,23 @@
     );
     if (changedKeys.length === 0) return;
     debugLog('background', 'storage_changed', { namespace, keys: changedKeys });
+
+    if (changes.nativeAutoPip) {
+      const wasNative = AutoPip.state.nativeAutoPip;
+      AutoPip.state.nativeAutoPip = changes.nativeAutoPip.newValue !== false;
+      if (namespace === 'sync') {
+        try { await chrome.storage.local.set({ nativeAutoPip: AutoPip.state.nativeAutoPip }); } catch (_) { }
+      }
+      if (!wasNative && AutoPip.state.nativeAutoPip) {
+        // Disarm only our registration. Never exit site/native or manual PiP.
+        AutoPip.tabSwitch.disarmAutoPipOnAllTabs();
+        AutoPip.tabSwitch.setTargetTab(null);
+        AutoPip.state.pipActiveTab = null;
+        try { chrome.storage.local.remove([STORAGE_KEYS.autoPipLatestBlocker]); } catch (_) { }
+      } else if (wasNative && !AutoPip.state.nativeAutoPip && AutoPip.state.autoPipOnTabSwitch) {
+        AutoPip.tabSwitch.registerAllowedTabs();
+      }
+    }
 
     if (changes.autoPipOnTabSwitch || changes.autoPipEnabled) {
       const nextValue = changes.autoPipOnTabSwitch && typeof changes.autoPipOnTabSwitch.newValue === 'boolean'

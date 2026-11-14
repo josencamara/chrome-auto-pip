@@ -15,6 +15,7 @@
           await chrome.storage.sync.clear();
           await chrome.storage.local.clear();
           const defaults = {
+            nativeAutoPip: true,
             autoPipOnTabSwitch: true,
             autoPipSiteBlocklist: DEFAULT_BLOCKED_SITES.slice(),
             autoPipBlocklistDefaultsVersion: BLOCKLIST_DEFAULTS_VERSION
@@ -61,7 +62,7 @@
       ...details
     });
 
-    if (sender && sender.tab) {
+    if (sender && sender.tab && !AutoPip.state.nativeAutoPip) {
       if (event === 'page_pip_state_changed') {
         const senderTabId = sender.tab.id;
         if (details.inPictureInPicture === true) {
@@ -111,6 +112,10 @@
       }
 
       if (message && message.type === 'auto_pip_prime_active_tab') {
+        if (AutoPip.state.nativeAutoPip) {
+          sendResponse({ ok: true, reason: 'native_mode' });
+          return true;
+        }
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
           const candidateTab = tabs && tabs.length > 0 ? tabs[0] : null;
           if (!isValidTab(candidateTab) || !isAutoPipAllowedTab(candidateTab)) {

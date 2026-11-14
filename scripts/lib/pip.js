@@ -49,13 +49,17 @@
         } catch (_) { }
     }
 
-    function cleanupOwnedAutoPiP(rootNode = document) {
+    function cleanupOwnedAutoPiP(rootNode = document, options = {}) {
         const cleanupRoot = (candidateRoot) => {
             if (!candidateRoot || !candidateRoot.querySelectorAll) return;
             try {
                 candidateRoot
                     .querySelectorAll(`video[${MARKERS.owned}], video[${MARKERS.addedAutoPip}], video[${MARKERS.compatRequested}], video[${MARKERS.pip}]`)
-                    .forEach(cleanupVideo);
+                    .forEach(video => {
+                        const manual = options.preserveManual === true && video.hasAttribute(MARKERS.pip);
+                        cleanupVideo(video);
+                        if (manual) video.setAttribute(MARKERS.pip, 'true');
+                    });
             } catch (_) { }
         };
 

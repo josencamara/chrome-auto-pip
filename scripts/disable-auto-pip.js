@@ -19,7 +19,7 @@
         if (typeof window.__auto_pip_cleanup_owned__ === 'function') {
             window.__auto_pip_cleanup_owned__();
         } else if (pip && typeof pip.cleanupOwnedAutoPiP === 'function') {
-            pip.cleanupOwnedAutoPiP();
+            pip.cleanupOwnedAutoPiP(document, { preserveManual: true });
         }
         return {
             ok: true,

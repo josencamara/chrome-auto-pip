@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', async () => {
+    const nativeAutoPipToggle = document.getElementById('nativeAutoPip');
     const autoPipOnTabSwitchToggle = document.getElementById('autoPipOnTabSwitch');
     const currentSiteSelect = document.getElementById('currentSiteSelect');
     const addCurrentSiteButton = document.getElementById('addCurrentSite');
@@ -22,6 +23,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let blockedSites = DEFAULT_BLOCKED_SITES.slice();
 
+    nativeAutoPipToggle.disabled = true;
     autoPipOnTabSwitchToggle.disabled = true;
     autoPipDebugEnabledToggle.disabled = true;
     downloadDebugLogButton.disabled = true;
@@ -76,6 +78,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function renderAutoPipBlocker(blocker) {
+        if (nativeAutoPipToggle.checked) blocker = null;
         if (!autoPipBlockerStatus) return;
         autoPipBlockerStatus.innerHTML = '';
         if (!blocker || typeof blocker !== 'object') {
@@ -237,11 +240,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    function renderMode() {
+        const native = nativeAutoPipToggle.checked;
+        document.getElementById('assistedAutoPipSetting').style.display = native ? 'none' : '';
+        document.getElementById('blockedSitesSetting').style.display = native ? 'none' : '';
+        if (native) renderAutoPipBlocker(null);
+    }
+
+    async function saveNativeMode() {
+        nativeAutoPipToggle.disabled = true;
+        try {
+            const next = { nativeAutoPip: nativeAutoPipToggle.checked };
+            await chrome.storage.sync.set(next);
+            await chrome.storage.local.set(next);
+        } finally {
+            nativeAutoPipToggle.disabled = false;
+            renderMode();
+        }
+    }
+
     async function loadSettingsWithFallback() {
         let localBlocklist = null;
 
         try {
             const local = await chrome.storage.local.get([
+                'nativeAutoPip',
                 'autoPipOnTabSwitch',
                 'autoPipEnabled',
                 'autoPipSiteBlocklist',
@@ -249,6 +272,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 'autoPipLatestBlocker'
             ]);
 
+            nativeAutoPipToggle.checked = local.nativeAutoPip !== false;
             autoPipDebugEnabledToggle.checked = local.autoPipDebugEnabled === true;
             renderDebugControls();
             renderAutoPipBlocker(local.autoPipLatestBlocker);
@@ -268,13 +292,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         try {
             const result = await chrome.storage.sync.get([
+                'nativeAutoPip',
                 'autoPipOnTabSwitch',
                 'autoPipEnabled',
                 'autoPipSiteBlocklist'
             ]);
 
             const migrated = await migrateOldSettings(result);
-            const effective = migrated || result;
+            const effective = { ...result, ...(migrated || {}) };
+            if (typeof result.nativeAutoPip === 'boolean') {
+                nativeAutoPipToggle.checked = result.nativeAutoPip;
+            }
 
             autoPipOnTabSwitchToggle.checked =
                 typeof effective.autoPipOnTabSwitch === 'boolean'
@@ -293,6 +321,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             try {
                 await chrome.storage.local.set({
+                    nativeAutoPip: nativeAutoPipToggle.checked,
                     autoPipOnTabSwitch: autoPipOnTabSwitchToggle.checked,
                     autoPipSiteBlocklist: blockedSites,
                     autoPipDebugEnabled: autoPipDebugEnabledToggle.checked
@@ -362,6 +391,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     await loadSettingsWithFallback();
+    nativeAutoPipToggle.disabled = false;
+    renderMode();
+    nativeAutoPipToggle.addEventListener('change', saveNativeMode);
     autoPipOnTabSwitchToggle.disabled = false;
     autoPipDebugEnabledToggle.disabled = false;
     renderDebugControls();
@@ -401,6 +433,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderDebugControls();
         }
 
+        if (changes.nativeAutoPip && (namespace === 'sync' || namespace === 'local')) {
+            nativeAutoPipToggle.checked = changes.nativeAutoPip.newValue !== false;
+            renderMode();
+        }
         if (namespace !== 'sync') return;
 
         const tabSwitchChange = changes.autoPipOnTabSwitch ? changes.autoPipOnTabSwitch.newValue : undefined;

@@ -11,6 +11,8 @@ function fixture({ delayed = false, rejectExit = false } = {}) {
   let complete;
   let action;
   let exits = 0;
+  let requests = 0;
+  let registrations = 0;
   class Video {
     constructor() {
       Object.assign(this, { paused: false, ended: false, readyState: 4,
@@ -21,6 +23,7 @@ function fixture({ delayed = false, rejectExit = false } = {}) {
     removeAttribute(name) { attributes.delete(name); }
     addEventListener(name, handler) { videoListeners[name] = handler; }
     async requestPictureInPicture() {
+      requests += 1;
       if (delayed) await new Promise(resolve => { complete = resolve; });
       document.pictureInPictureElement = this;
     }
@@ -39,17 +42,26 @@ function fixture({ delayed = false, rejectExit = false } = {}) {
   };
   const window = { postMessage() {}, addEventListener() {} };
   window.top = window;
+  const mediaSession = { playbackState: 'paused',
+    setActionHandler: (name, handler) => { registrations += 1; action = handler; } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../scripts/page-auto-pip.js'), 'utf8'), {
-    window, document, navigator: { mediaSession: {
-      setActionHandler: (name, handler) => { action = handler; }
-    }, userActivation: { isActive: false } },
+    window, document, navigator: { mediaSession, userActivation: { isActive: true } },
     HTMLVideoElement: Video, location: { href: 'https://example.com/video' }, URL,
     MutationObserver: class { observe() {} }, setTimeout: () => 1, clearTimeout() {},
     Set
   });
   return {
-    video, document, action, get exits() { return exits; },
+    video, document, action, mediaSession,
+    disable: () => window.__auto_pip_page_disable__(),
+    get exits() { return exits; },
     complete: () => complete(),
+    get requests() { return requests; },
+    get registrations() { return registrations; },
+    async hidden() {
+      document.visibilityState = 'hidden';
+      listeners.visibilitychange();
+      await Promise.resolve();
+    },
     async visible() {
       document.visibilityState = 'visible';
       listeners.visibilitychange();
@@ -119,4 +131,50 @@ test('return cleanup injects into all frames in the page world', () => {
   expect(injections[0].target).toEqual({ tabId: 42, allFrames: true });
   expect(injections[0].world).toBe('MAIN');
   expect(injections[0].files).toContain('./scripts/exit-pip.js');
+});
+
+
+test('assisted mode never requests PiP on visibility changes, even with active user activation', async () => {
+  const f = fixture();
+  await f.visible();
+  await f.hidden();
+  await f.visible();
+  await f.hidden();
+  expect(f.requests).toBe(0);
+  expect(f.registrations).toBe(1);
+});
+
+test('return cleanup keeps registration armed without removing and readding video attributes', async () => {
+  const f = fixture();
+  await f.action();
+  await f.visible();
+  expect(f.video.hasAttribute('autopictureinpicture')).toBe(true);
+  expect(f.video.hasAttribute('data-auto-pip-managed')).toBe(true);
+  expect(f.registrations).toBe(1);
+});
+
+
+test('disabling assistance restores its previous playback state', () => {
+  const f = fixture();
+  expect(f.mediaSession.playbackState).toBe('playing');
+  f.disable();
+  expect(f.mediaSession.playbackState).toBe('paused');
+});
+
+test('disabling assistance preserves a newer site playback state', () => {
+  const f = fixture();
+  f.mediaSession.playbackState = 'none';
+  f.disable();
+  expect(f.mediaSession.playbackState).toBe('none');
+});
+
+test('a pending callback finishing after assistance is disabled does not close PiP', async () => {
+  const f = fixture({ delayed: true });
+  const pending = f.action();
+  f.disable();
+  await f.visible();
+  f.complete();
+  await pending;
+  expect(f.exits).toBe(0);
+  expect(f.video.hasAttribute('data-auto-pip-compat-requested')).toBe(false);
 });

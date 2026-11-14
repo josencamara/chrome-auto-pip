@@ -1,6 +1,6 @@
 {
   "name": "Automatic Picture-in-Picture (Auto PiP)",
-  "description": "Automatic Picture-in-Picture on tab switch, with one-click toolbar PiP, disabled sites, and safer cleanup.",
+  "description": "Native Chrome automatic PiP with optional site assistance and one-click toolbar PiP.",
   "version": "2.0.2",
   "manifest_version": 3,
   "icons": {

@@ -229,7 +229,7 @@ async function launchLocalContext(options = {}) {
 
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: options.headless === true,
-    channel: browserConfig.channel || undefined,
+    channel: browserConfig.channel || (options.headless === true ? 'chromium' : undefined),
     executablePath: browserConfig.executablePath || undefined,
     args
   });
@@ -273,6 +273,7 @@ async function getBackgroundState(session) {
       currentTab: globalThis.AutoPip && globalThis.AutoPip.state ? globalThis.AutoPip.state.currentTab : null,
       targetTab: globalThis.AutoPip && globalThis.AutoPip.state ? globalThis.AutoPip.state.targetTab : null,
       pipActiveTab: globalThis.AutoPip && globalThis.AutoPip.state ? globalThis.AutoPip.state.pipActiveTab : null,
+      nativeAutoPip: globalThis.AutoPip && globalThis.AutoPip.state ? globalThis.AutoPip.state.nativeAutoPip : null,
       autoPipOnTabSwitch: globalThis.AutoPip && globalThis.AutoPip.state ? globalThis.AutoPip.state.autoPipOnTabSwitch : null,
       local,
       sync

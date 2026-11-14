@@ -267,7 +267,37 @@ async function runDisabledSiteCheck(session, check) {
   }
 }
 
+// Native mode checks non-interference. PiP eligibility is recorded, not inferred
+// from a successful page load or from an extension-owned attribute.
+async function runNativePreservationCheck(session, check) {
+  const page = await session.context.newPage();
+  let blank;
+  try {
+    await page.goto(check.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.bringToFront();
+    await page.waitForTimeout(1500);
+    const before = await page.evaluate(videoStateScript());
+    blank = await session.context.newPage();
+    await blank.goto('data:text/html,<title>Native PiP check</title>');
+    await blank.bringToFront();
+    await blank.waitForTimeout(1500);
+    const hidden = await page.evaluate(videoStateScript());
+    await page.bringToFront();
+    const after = await page.evaluate(videoStateScript());
+    if ([before, hidden, after].some(state => state.registered || state.owned)) {
+      return failed('extension_interfered_in_native_mode', { before, hidden, after });
+    }
+    return passed({ before, hidden, after, nativePiPObserved: hidden.pip,
+      note: 'Native state preserved; this does not establish automatic PiP eligibility.' });
+  } finally {
+    if (blank) await blank.close().catch(() => {});
+    await page.close().catch(() => {});
+  }
+}
+
 async function runCheck(session, check, artifactDir) {
+  const native = await session.worker.evaluate(() => AutoPip.state.nativeAutoPip);
+  if (native) return runNativePreservationCheck(session, check);
   if (check.kind === 'video') return runVideoSwitchCheck(session, check, artifactDir);
   if (check.kind === 'arm-only') return runArmOnlyCheck(session, check);
   if (check.kind === 'gesture-video') return runGestureCheck(session, check, artifactDir);
@@ -285,6 +315,7 @@ async function main() {
     artifactDir,
     realSitesEnabled: enabled,
     browser: process.env.AUTO_PIP_LOCAL_BROWSER || 'chromium',
+    nativeAutoPip: process.env.AUTO_PIP_SITE_MODE !== 'assisted',
     checks: []
   };
 
@@ -310,6 +341,12 @@ async function main() {
   }
 
   try {
+    await session.worker.evaluate(async (native) => {
+      await AutoPip.state.settingsReady;
+      await chrome.storage.sync.set({ nativeAutoPip: native });
+      await chrome.storage.local.set({ nativeAutoPip: native });
+      await AutoPip.settings.loadSettings();
+    }, summary.nativeAutoPip);
     await session.worker.evaluate(async () => chrome.storage.local.set({
       autoPipDebugEnabled: true,
       autoPipDebugLog: [],

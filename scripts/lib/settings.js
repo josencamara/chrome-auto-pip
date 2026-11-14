@@ -68,7 +68,7 @@
 
     const readStorage = (area) => new Promise(resolve => {
         try {
-            area.get(['autoPipOnTabSwitch', 'autoPipSiteBlocklist'], (data) => resolve(data || null));
+            area.get(['nativeAutoPip', 'autoPipOnTabSwitch', 'autoPipSiteBlocklist'], (data) => resolve(data || null));
         } catch (_) {
             resolve(null);
         }
@@ -77,19 +77,22 @@
     async function getSettings() {
         if (typeof chrome === 'undefined' || !chrome.storage) {
             return {
+                nativeAutoPip: true,
                 autoPipOnTabSwitch: true,
                 autoPipSiteBlocklist: DEFAULT_BLOCKED_SITES
             };
         }
         const local = await readStorage(chrome.storage.local);
-        if (local && (typeof local.autoPipOnTabSwitch === 'boolean' || Array.isArray(local.autoPipSiteBlocklist))) {
+        if (local && (typeof local.nativeAutoPip === 'boolean' || typeof local.autoPipOnTabSwitch === 'boolean' || Array.isArray(local.autoPipSiteBlocklist))) {
             return {
+                nativeAutoPip: local.nativeAutoPip !== false,
                 autoPipOnTabSwitch: typeof local.autoPipOnTabSwitch === 'boolean' ? local.autoPipOnTabSwitch : true,
                 autoPipSiteBlocklist: normalizeBlocklist(local.autoPipSiteBlocklist) || DEFAULT_BLOCKED_SITES
             };
         }
         const sync = await readStorage(chrome.storage.sync);
         return {
+            nativeAutoPip: !sync || sync.nativeAutoPip !== false,
             autoPipOnTabSwitch: sync && typeof sync.autoPipOnTabSwitch === 'boolean'
                 ? sync.autoPipOnTabSwitch
                 : true,

@@ -10,8 +10,7 @@
     const COMPAT_ATTR = 'data-auto-pip-compat-requested';
     const LAST_PLAYING_ATTR = 'data-auto-pip-last-playing-at';
     const NATIVE_MISS_CHECK_MS = 900;
-    const REARM_DELAY_MS = 100;
-    const LISTENER_VERSION = 6;
+    const LISTENER_VERSION = 7;
 
     const state = window.__auto_pip_page_state__ || {
         listenersRegistered: false,
@@ -20,14 +19,14 @@
         videos: new Set(),
         refreshTimer: null,
         lastRegistrationLog: '',
-        lastUserGestureAt: 0,
-        compatAttemptToken: 0,
         nativeMissToken: 0,
         nativeMissTimer: null,
         nativeMissReported: false,
-        rearmTimer: null,
         listenerVersion: 0
     };
+    if (!('previousPlaybackState' in state) || window.__auto_pip_page_disabled__ === true) {
+        state.previousPlaybackState = navigator.mediaSession.playbackState || 'none';
+    }
     window.__auto_pip_page_state__ = state;
     if (!(state.videos instanceof Set)) {
         state.videos = new Set();
@@ -167,42 +166,6 @@
         } catch (_) { }
     }
 
-    function disarmVideoForRearm(video) {
-        if (!video) return false;
-        try {
-            const wasManaged = video.hasAttribute(OWNED_ATTR) || video.hasAttribute(ADDED_AUTOPIP_ATTR);
-            if (!wasManaged) return false;
-            if (video.hasAttribute(ADDED_AUTOPIP_ATTR)) {
-                video.removeAttribute('autopictureinpicture');
-                video.removeAttribute(ADDED_AUTOPIP_ATTR);
-            }
-            video.removeAttribute(OWNED_ATTR);
-            video.removeAttribute(COMPAT_ATTR);
-            return true;
-        } catch (_) {
-            return false;
-        }
-    }
-
-    function scheduleAutoPiPRearm(reason) {
-        if (document.visibilityState !== 'visible' || isDisabled()) return;
-        const videos = getVideos();
-        const disarmedCount = videos.reduce((count, video) => (
-            disarmVideoForRearm(video) ? count + 1 : count
-        ), 0);
-        if (disarmedCount === 0) return;
-        debugLog('page_autopip_rearm_scheduled', { reason, disarmedCount });
-        if (state.rearmTimer) {
-            try { clearTimeout(state.rearmTimer); } catch (_) { }
-        }
-        state.rearmTimer = setTimeout(() => {
-            state.rearmTimer = null;
-            if (document.visibilityState !== 'visible' || isDisabled()) return;
-            updateRegistration({ forceLog: true });
-            debugLog('page_autopip_rearmed', { reason });
-        }, REARM_DELAY_MS);
-    }
-
     function syncVideo(video) {
         if (!video) return;
         if (isPlaying(video) && !isDisabled()) {
@@ -256,7 +219,7 @@
             video.addEventListener('enterpictureinpicture', () => notifyPiPState(true));
             video.addEventListener('leavepictureinpicture', () => {
                 notifyPiPState(false);
-                scheduleAutoPiPRearm('leavepictureinpicture');
+                video.removeAttribute(COMPAT_ATTR);
             });
         } catch (_) { }
     }
@@ -274,8 +237,12 @@
         videos.forEach(attachPiPStateBridge);
         const hasPlaying = videos.some(isPlaying);
         try {
-            navigator.mediaSession.playbackState = hasPlaying ? 'playing' : 'paused';
-            navigator.mediaSession.setActionHandler('enterpictureinpicture', enterPictureInPicture);
+            state.assistedPlaybackState = hasPlaying ? 'playing' : 'paused';
+            navigator.mediaSession.playbackState = state.assistedPlaybackState;
+            if (!state.actionHandlerRegistered) {
+                navigator.mediaSession.setActionHandler('enterpictureinpicture', enterPictureInPicture);
+                state.actionHandlerRegistered = true;
+            }
         } catch (_) { }
 
         state.hasPlaying = hasPlaying;
@@ -308,6 +275,7 @@
             syncVideo(video);
             attachPiPStateBridge(video);
             await video.requestPictureInPicture();
+            if (isDisabled()) return true;
             // This request came from the automatic MediaSession handler.
             // Record the origin so returning to the tab does not close manual PiP.
             video.setAttribute(COMPAT_ATTR, String(Date.now()));
@@ -327,57 +295,6 @@
             });
             return false;
         }
-    }
-
-    function noteUserGesture(event) {
-        state.lastUserGestureAt = Date.now();
-        debugLog('page_user_gesture', {
-            type: event && event.type ? event.type : null
-        });
-    }
-
-    function attemptCompatibilityPictureInPicture() {
-        const token = (state.compatAttemptToken || 0) + 1;
-        state.compatAttemptToken = token;
-
-        (async () => {
-            if (state.compatAttemptToken !== token) return;
-            if (isDisabled()) return;
-            if (document.visibilityState !== 'hidden') return;
-            if (document.pictureInPictureElement) {
-                debugLog('page_compat_auto_pip_skip', { reason: 'already_active' });
-                return;
-            }
-
-            const lastGestureAt = state.lastUserGestureAt || 0;
-            const gestureAgeMs = lastGestureAt ? Date.now() - lastGestureAt : null;
-            const userActivation = getUserActivationState();
-            if (!userActivation.isActive) {
-                debugLog('page_compat_auto_pip_skip', {
-                    reason: 'no_active_user_activation',
-                    gestureAgeMs,
-                    userActivation
-                });
-                return;
-            }
-
-            debugLog('page_compat_auto_pip_attempt', {
-                gestureAgeMs,
-                userActivation
-            });
-            const result = await enterPictureInPicture();
-            debugLog('page_compat_auto_pip_result', {
-                ok: result === true,
-                userActivation: getUserActivationState()
-            });
-            if (result !== true) {
-                debugLog('page_auto_pip_browser_blocked', {
-                    reason: 'request_requires_user_gesture_after_tab_switch',
-                    likelyNativeGate: 'site_auto_pip_permission_or_media_engagement',
-                    userActivation: getUserActivationState()
-                });
-            }
-        })();
     }
 
     function clearNativeMissWatch(reason) {
@@ -461,7 +378,9 @@
         window.__auto_pip_page_disabled__ = true;
         getVideos().forEach(cleanupVideo);
         try {
-            navigator.mediaSession.playbackState = 'none';
+            if (navigator.mediaSession.playbackState === state.assistedPlaybackState) {
+                navigator.mediaSession.playbackState = state.previousPlaybackState;
+            }
         } catch (_) { }
         state.registered = false;
         state.hasPlaying = false;
@@ -496,31 +415,19 @@
         });
 
         document.addEventListener('visibilitychange', () => {
-            const visibleAfterNativeMiss = document.visibilityState === 'visible' &&
-                state.nativeMissReported === true;
-
-            debugLog('page_visibility_changed', { visibleAfterNativeMiss });
+            debugLog('page_visibility_changed');
 
             if (document.visibilityState === 'hidden') {
                 updateRegistration({ forceLog: true });
-                attemptCompatibilityPictureInPicture();
                 scheduleNativeMissWatch();
             } else {
                 // Native PiP normally exits automatically. Explicitly close PiP
                 // started by our automatic path if Chromium leaves it floating.
                 void closeAutoPiPOnReturn();
-                state.compatAttemptToken = (state.compatAttemptToken || 0) + 1;
                 clearNativeMissWatch('visible');
                 updateRegistration({ forceLog: true });
-                if (visibleAfterNativeMiss) {
-                    scheduleAutoPiPRearm('visible_after_native_miss');
-                }
             }
         }, true);
-
-        ['pointerdown', 'click', 'keydown'].forEach((eventName) => {
-            document.addEventListener(eventName, noteUserGesture, true);
-        });
 
         try {
             state.observer = new MutationObserver(scheduleRefresh);

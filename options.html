@@ -284,10 +284,27 @@
 
             <div class="setting">
                 <div class="setting-info">
-                    <div class="setting-title">Auto PiP on Tab Switch</div>
+                    <div class="setting-title">Use Chrome's automatic PiP</div>
                     <div class="setting-description">
-                        Automatically activate PiP when switching to a different
-                        tab in the same window.
+                        Recommended. Chrome and the website control when PiP opens and closes.
+                        The toolbar button still works. Allow Automatic picture-in-picture
+                        in Chrome's site settings where available. After switching back
+                        to this mode, reload open video tabs.
+                    </div>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" id="nativeAutoPip" checked aria-label="Use Chrome's automatic PiP" />
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="setting" id="assistedAutoPipSetting" style="display: none">
+                <div class="setting-info">
+                    <div class="setting-title">Assist automatic PiP on other sites</div>
+                    <div class="setting-description">
+                        Registers an automatic PiP handler for sites without their own support.
+                        Chrome still decides whether to open PiP. Turn Chrome mode back on
+                        for sites such as YouTube.
                     </div>
                 </div>
                 <label class="toggle">
@@ -313,7 +330,7 @@
                 <div class="setting-info">
                     <div class="setting-title">Disabled Sites</div>
                     <div class="setting-description">
-                        Auto PiP will not run on these domains. Use a
+                        Extension assistance will not run on these domains. Native Chrome PiP is unaffected. Use a
                         <code>*.</code> prefix to include subdomains (e.g.
                         <code>*.zoom.us</code>).
                     </div>
