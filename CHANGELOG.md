@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-14
+
 ### Changed
 - Default to native automatic PiP: preserve Chrome/site handlers, playback state, and video attributes; leave opening and return cleanup to Chrome.
 - Keep the manual toolbar button available in native mode and expose optional assistance for sites without their own support.

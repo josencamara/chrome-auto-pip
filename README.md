@@ -4,12 +4,12 @@ A fork of [apotenza92/chrome-auto-pip](https://github.com/apotenza92/chrome-auto
 
 ## Install
 
-1. Download an extension ZIP from [this fork's releases](https://github.com/josencamara/chrome-auto-pip/releases). Source archives and development branches may contain different changes; v2.0.2 predates native mode.
+1. Download an extension ZIP from [this fork's releases](https://github.com/josencamara/chrome-auto-pip/releases). Native mode is included in v2.1.0 and later.
 2. Extract it to a permanent folder.
 3. Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select the folder containing `manifest.json`.
 4. Disable other copies of this extension, then reload your video tabs.
 
-For this development branch, download its source ZIP or clone the branch and load the repository folder directly. After updating the files, click **Reload** on the extension card and reload open video tabs. A page reload is needed to remove page handlers left behind by older versions or by assistance mode.
+For updates, replace the files in the existing extension folder, click **Reload** on the extension card, and reload open video tabs. A page reload is needed to remove page handlers left behind by older versions or by assistance mode.
 
 Requires Chrome 134 or later. Enable **Automatic picture-in-picture** in Chrome's site settings where available. Some Chromium versions also require the `auto-picture-in-picture-for-video-playback` flag in `chrome://flags` and a browser restart.
 

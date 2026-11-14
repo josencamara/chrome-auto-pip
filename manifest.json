@@ -1,7 +1,7 @@
 {
   "name": "Automatic Picture-in-Picture (Auto PiP)",
   "description": "Native Chrome automatic PiP with optional site assistance and one-click toolbar PiP.",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "manifest_version": 3,
   "icons": {
     "128": "assets/icon.png"
