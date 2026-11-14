@@ -102,10 +102,12 @@ test('blocklist disables auto-pip on a site', async ({ context }) => {
       });
     }), { autoPipSiteBlocklist: [host] });
 
-    await expect.poll(async () => (await getTabFlags(videoTabId)).disabled, { timeout: 15000 }).toBe(true);
-    await expect.poll(async () => (await getTabFlags(videoTabId)).registered, { timeout: 15000 }).toBe(false);
-    await expect.poll(async () => (await getTabFlags(videoTabId)).autoPiPVideoCount, { timeout: 15000 }).toBe(0);
-    expect((await getTabFlags(videoTabId)).siteMediaSessionCleared).toBe(false);
+    await expect.poll(() => getTabFlags(videoTabId), { timeout: 15000 }).toMatchObject({
+      disabled: true,
+      registered: false,
+      autoPiPVideoCount: 0,
+      siteMediaSessionCleared: false
+    });
 
     await worker.evaluate((id) => {
       if (id) chrome.tabs.remove(id);

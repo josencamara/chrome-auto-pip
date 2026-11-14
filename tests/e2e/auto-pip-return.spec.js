@@ -268,3 +268,50 @@ test('compatibility PiP uses browser tab selection when page visibility is stale
   expect(requests).toBe(2);
   expect(document.pictureInPictureElement).toBe(null);
 });
+
+test('disabling PiP invalidates a pending read of older settings', async () => {
+  let finishSettingsRead;
+  const window = {
+    AutoPipContent: { settings: {
+      getSettings: () => new Promise(resolve => { finishSettingsRead = resolve; }),
+      hostname: () => 'video.example',
+      isHostBlocked: () => false
+    } },
+    addEventListener() {},
+    postMessage() {}
+  };
+  const context = vm.createContext({ window, navigator: { mediaSession: {} }, document: { addEventListener() {} } });
+  const bridge = fs.readFileSync(path.join(__dirname, '../../scripts/trigger-auto-pip.js'), 'utf8');
+  const disable = fs.readFileSync(path.join(__dirname, '../../scripts/disable-auto-pip.js'), 'utf8');
+  const pendingRegistration = vm.runInContext(bridge, context);
+  vm.runInContext(disable, context);
+
+  finishSettingsRead({ autoPipOnTabSwitch: true, autoPipSiteBlocklist: [] });
+  expect(await pendingRegistration).toMatchObject({ reason: 'settings_superseded' });
+  expect(window.__auto_pip_disabled__).toBe(true);
+  expect(window.__auto_pip_registered__).toBe(false);
+});
+
+test('the bridge notifies the background when autoplay started before registration', async () => {
+  const outbound = [];
+  const window = {
+    AutoPipContent: {
+      settings: {
+        async getSettings() { return { autoPipOnTabSwitch: true, autoPipSiteBlocklist: [] }; },
+        hostname: () => 'video.example',
+        isHostBlocked: () => false
+      },
+      video: { findVideos: () => [{}], isPlaying: () => true }
+    },
+    addEventListener() {}
+  };
+  const bridge = fs.readFileSync(path.join(__dirname, '../../scripts/trigger-auto-pip.js'), 'utf8');
+  const context = vm.createContext({
+    window,
+    navigator: { mediaSession: {} },
+    document: { hidden: false, addEventListener() {} },
+    chrome: { runtime: { sendMessage: message => outbound.push(message) } }
+  });
+  expect(await vm.runInContext(bridge, context)).toMatchObject({ ok: true });
+  expect(outbound.filter(message => message.type === 'auto_pip_video_playing')).toHaveLength(1);
+});

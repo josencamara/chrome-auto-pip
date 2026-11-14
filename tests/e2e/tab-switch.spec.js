@@ -45,14 +45,26 @@ async function videoFlags(page) {
   });
 }
 
-async function switchAwayWithActivation(videoPage, destination, worker) {
+async function browserTabId(worker, page) {
+  const tabId = await worker.evaluate(async url => {
+    const tabs = await chrome.tabs.query({});
+    return tabs.find(tab => tab.url === url)?.id;
+  }, page.url());
+  expect(tabId).toEqual(expect.any(Number));
+  return tabId;
+}
+
+async function selectTab(worker, tabId) {
+  expect(await worker.evaluate(async tabId => {
+    await chrome.tabs.update(tabId, { active: true });
+    return (await chrome.tabs.get(tabId)).active;
+  }, tabId)).toBe(true);
+}
+
+async function switchAwayWithActivation(videoPage, destinationTab, worker) {
   await videoPage.locator('video').click();
   expect(await videoPage.evaluate(() => navigator.userActivation.isActive)).toBe(true);
-  await destination.bringToFront();
-  await expect.poll(() => worker.evaluate(async url => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    return tab?.url === url;
-  }, destination.url())).toBe(true);
+  await selectTab(worker, destinationTab);
 }
 
 test('tab switch setting, paused skip, and repeated muted compatibility PiP', async ({ context, page, extensionId }, testInfo) => {
@@ -86,6 +98,7 @@ test('tab switch setting, paused skip, and repeated muted compatibility PiP', as
     const pausedPage = await context.newPage();
     openedPages.push(pausedPage);
     await pausedPage.goto(`${baseURL}/sample-video.html`);
+    await selectTab(worker, await browserTabId(worker, pausedPage));
 
     await expect.poll(async () => videoFlags(pausedPage), { timeout: 15000 }).toMatchObject({
       hasVideo: true,
@@ -113,7 +126,8 @@ test('tab switch setting, paused skip, and repeated muted compatibility PiP', as
     const blankPage = await context.newPage();
     openedPages.push(blankPage);
     await blankPage.goto(`${baseURL}/blank.html`);
-    await blankPage.bringToFront();
+    const blankTab = await browserTabId(worker, blankPage);
+    await selectTab(worker, blankTab);
     await blankPage.waitForTimeout(1000);
     expect((await videoFlags(pausedPage)).inPictureInPicture).toBe(false);
     await pausedPage.close();
@@ -121,6 +135,8 @@ test('tab switch setting, paused skip, and repeated muted compatibility PiP', as
     const videoPage = await context.newPage();
     openedPages.push(videoPage);
     await videoPage.goto(`${baseURL}/sample-video.html`);
+    const videoTab = await browserTabId(worker, videoPage);
+    await selectTab(worker, videoTab);
     await expect.poll(async () => videoFlags(videoPage), { timeout: 15000 }).toMatchObject({
       hasVideo: true,
       playing: true,
@@ -128,20 +144,20 @@ test('tab switch setting, paused skip, and repeated muted compatibility PiP', as
       autoPipAttr: true
     });
 
-    await switchAwayWithActivation(videoPage, blankPage, worker);
+    await switchAwayWithActivation(videoPage, blankTab, worker);
     await expect.poll(async () => videoFlags(videoPage), { timeout: 10000 }).toMatchObject({
       inPictureInPicture: true,
       compatRequested: true,
       owned: true
     });
 
-    await videoPage.bringToFront();
+    await selectTab(worker, videoTab);
     await expect.poll(async () => videoFlags(videoPage), { timeout: 10000 }).toMatchObject({
       inPictureInPicture: false,
       playing: true
     });
 
-    await switchAwayWithActivation(videoPage, blankPage, worker);
+    await switchAwayWithActivation(videoPage, blankTab, worker);
     await expect.poll(async () => videoFlags(videoPage), { timeout: 10000 }).toMatchObject({
       inPictureInPicture: true,
       playing: true,

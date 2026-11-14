@@ -79,7 +79,8 @@ try {
 
     $clock = [System.Diagnostics.Stopwatch]::StartNew()
     $previousId = -1
-    $wasBrowser = $false
+    $sourceProcessId = 0
+    $withoutForegroundSince = $null
     $leftAt = $null
     $destination = 0
     $stableSince = 0
@@ -87,19 +88,32 @@ try {
     while ($RunSeconds -eq 0 -or $clock.Elapsed.TotalSeconds -lt $RunSeconds) {
         $id = [AutoPipWindowsInput]::ForegroundProcess()
         $now = $clock.ElapsedMilliseconds
-        if ($id -ne 0 -and $id -ne $previousId) {
+        if ($id -eq 0) {
+            if ($null -eq $withoutForegroundSince) { $withoutForegroundSince = $now }
+            if ($now - $withoutForegroundSince -gt 1500) {
+                $sourceProcessId = 0
+                $previousId = 0
+                $leftAt = $null
+            }
+            Start-Sleep -Milliseconds 45
+            continue
+        }
+        $withoutForegroundSince = $null
+        if ($id -ne $previousId) {
             $process = Get-Process -Id $id -ErrorAction SilentlyContinue
             $isBrowser = $process.ProcessName -eq $Browser -and
                 ($BrowserProcessId -eq 0 -or $id -eq $BrowserProcessId)
             if ($isBrowser) {
                 $leftAt = $null
-                if (-not $wasBrowser) { Write-SwitchEvent 'browser_focused' $id }
-            } elseif ($wasBrowser) {
+                if ($sourceProcessId -eq 0 -or $previousId -ne $sourceProcessId) {
+                    Write-SwitchEvent 'browser_focused' $id
+                }
+                $sourceProcessId = $id
+            } elseif ($sourceProcessId -ne 0 -and $previousId -eq $sourceProcessId) {
                 $leftAt = $now
             }
             $destination = $id
             $stableSince = $now
-            $wasBrowser = $isBrowser
             $previousId = $id
         }
 
@@ -110,9 +124,12 @@ try {
                 -not [AutoPipWindowsInput]::ShortcutKeysDown($Digit) -and
                 [AutoPipWindowsInput]::ForegroundProcess() -eq $destination) {
                 $leftAt = $null
-                $sent = [AutoPipWindowsInput]::Shortcut($Digit)
-                Write-SwitchEvent 'shortcut_sent' $id $sent
-                if ($sent -ne 6) { Write-Warning "Windows accepted only $sent of 6 shortcut events." }
+                $source = Get-Process -Id $sourceProcessId -ErrorAction SilentlyContinue
+                if ($source.ProcessName -eq $Browser) {
+                    $sent = [AutoPipWindowsInput]::Shortcut($Digit)
+                    Write-SwitchEvent 'shortcut_sent' $id $sent
+                    if ($sent -ne 6) { Write-Warning "Windows accepted only $sent of 6 shortcut events." }
+                }
             }
         }
         Start-Sleep -Milliseconds 45

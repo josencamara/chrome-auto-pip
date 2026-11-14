@@ -4,6 +4,7 @@
     'use strict';
 
     const settingsLib = window.AutoPipContent && window.AutoPipContent.settings;
+    const videoLib = window.AutoPipContent && window.AutoPipContent.video;
     const pip = window.AutoPipContent && window.AutoPipContent.pip;
     const path = 'native';
 
@@ -39,6 +40,8 @@
         return { ok: false, status: 'failed', reason: 'missing_settings_lib', path };
     }
 
+    const revision = (window.__auto_pip_settings_revision__ || 0) + 1;
+    window.__auto_pip_settings_revision__ = revision;
     let settings = null;
     try {
         settings = await settingsLib.getSettings();
@@ -47,6 +50,9 @@
             autoPipOnTabSwitch: true,
             autoPipSiteBlocklist: settingsLib.DEFAULT_BLOCKED_SITES
         };
+    }
+    if (window.__auto_pip_settings_revision__ !== revision) {
+        return { ok: false, status: 'skipped', reason: 'settings_superseded', path };
     }
 
     const hostname = settingsLib.hostname();
@@ -93,15 +99,21 @@
     }
 
     if (!window.__auto_pip_playing_listener__) {
-        document.addEventListener('playing', event => {
-            if (window.__auto_pip_disabled__ || document.hidden || !(event.target instanceof HTMLVideoElement)) return;
+        const notifyPlaying = () => {
+            if (window.__auto_pip_disabled__ || document.hidden) return;
             try {
                 chrome.runtime.sendMessage({ type: 'auto_pip_video_playing' }, () => {
                     void chrome.runtime.lastError;
                 });
             } catch (_) { }
+        };
+        document.addEventListener('playing', event => {
+            if (event.target instanceof HTMLVideoElement) notifyPlaying();
         }, true);
         window.__auto_pip_playing_listener__ = true;
+        if (!document.hidden && videoLib?.findVideos({ minReadyState: 2 }).some(videoLib.isPlaying)) {
+            notifyPlaying();
+        }
     }
 
     debugLog('bridge_armed', { path });

@@ -102,17 +102,14 @@
       if (lastWindow == null) void rememberLastWindow();
       return;
     }
-    const generation = ++focusGeneration;
+    focusGeneration++;
+    lastWindow = windowId;
     if (owner?.windowId === windowId) {
       const closing = owner;
       owner = undefined;
       void closePip(closing);
     }
-    chrome.windows.get(windowId).then(window => {
-      if (generation !== focusGeneration || window.type !== 'normal' || !window.focused) return;
-      lastWindow = windowId;
-      return rememberWindow(windowId);
-    }).catch(() => {});
+    rememberWindow(windowId).catch(() => {});
   }
 
   chrome.commands.onCommand.addListener(handleCommand);

@@ -95,6 +95,21 @@ test('a delayed lookup cannot replace the more recently selected tab', async () 
   expect(calls.map(call => call.target.tabId)).toEqual([newer.id]);
 });
 
+test('a quick departure from a second window does not open video from the first', async () => {
+  const { chrome, tab, handlers, calls, settle } = await setup();
+  const second = { ...tab, id: 27, windowId: 7 };
+  chrome.tabs.query = (options, callback) => {
+    if (callback) return queueMicrotask(() => callback([second]));
+    if (options.windowId === second.windowId) return new Promise(() => {});
+    return Promise.resolve([tab]);
+  };
+  handlers.focus(second.windowId);
+  handlers.focus(chrome.windows.WINDOW_ID_NONE);
+  handlers.command(command);
+  await settle();
+  expect(calls.map(call => call.target.tabId)).toEqual([second.id]);
+});
+
 test('browser return can retry closing PiP after the page focus exit fails', async () => {
   const { tab, window, handlers, calls, settle } = await setup();
   handlers.command(command);
