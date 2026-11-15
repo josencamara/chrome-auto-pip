@@ -194,7 +194,9 @@ async function waitForExtensionWorker(context, timeoutMs = 45000) {
   }
 
   if (wakePage && !wakePage.isClosed()) await wakePage.close().catch(() => {});
-  throw new Error(`Timed out waiting for extension service worker after ${timeoutMs}ms`);
+  const error = new Error(`Timed out waiting for extension service worker after ${timeoutMs}ms`);
+  error.code = 'AUTO_PIP_WORKER_STARTUP';
+  throw error;
 }
 
 async function launchLocalContext(options = {}) {
@@ -234,7 +236,16 @@ async function launchLocalContext(options = {}) {
     args
   });
 
-  const worker = withExtension ? await waitForExtensionWorker(context, options.workerTimeoutMs || 45000) : null;
+  let worker;
+  try {
+    worker = withExtension ? await waitForExtensionWorker(context, options.workerTimeoutMs || 45000) : null;
+  } catch (error) {
+    await context.close().catch(() => {});
+    if (process.env.AUTO_PIP_KEEP_PROFILE !== '1') {
+      fs.rmSync(userDataDir, { recursive: true, force: true });
+    }
+    throw error;
+  }
   const extensionId = worker ? worker.url().split('/')[2] : null;
   const session = {
     context,

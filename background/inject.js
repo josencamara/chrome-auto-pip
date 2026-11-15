@@ -160,8 +160,8 @@
         if (callback) callback(results);
         return;
       }
-      injectPageAutoPiPScript(tabId, () => {
-        if (callback) callback(results);
+      injectPageAutoPiPScript(tabId, (pageResults) => {
+        if (callback) callback(pageResults);
       });
     }, { policy: INJECTION_POLICIES.topFrameOnly });
   }
@@ -178,6 +178,13 @@
       // The playing video can live inside an iframe.
       policy: INJECTION_POLICIES.allFrames,
       world: 'MAIN'
+    });
+  }
+
+  function injectExitTabPiPScript(tabId, callback) {
+    injectWithLib(tabId, ['./scripts/exit-tab-pip.js'], callback, {
+      allowBlocked: true,
+      policy: INJECTION_POLICIES.allFrames
     });
   }
 
@@ -233,6 +240,7 @@
     injectTriggerAutoPiP,
     injectCheckVideoScript,
     injectExitPiPScript,
+    injectExitTabPiPScript,
     injectImmediatePiPScript,
     injectRequestPlayingPiPScript,
     injectDisableAutoPiPScript,

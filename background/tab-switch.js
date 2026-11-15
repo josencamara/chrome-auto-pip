@@ -8,6 +8,7 @@
   const {
     injectCheckVideoScript,
     injectExitPiPScript,
+    injectExitTabPiPScript,
     injectRequestPlayingPiPScript,
     injectDisableAndExitAutoPiPScript,
     injectImmediatePiPScript,
@@ -17,6 +18,7 @@
     hasAnyFrameTrue,
     hasExitedPiP
   } = AutoPip.inject;
+  const activeTabByWindow = new Map();
 
   function setTargetTab(tabId) {
     AutoPip.state.targetTab = tabId == null ? null : tabId;
@@ -24,6 +26,7 @@
 
   function refreshActiveTabTarget(tabId, eventName) {
     injectCheckVideoScript(tabId, (results) => {
+      if (AutoPip.state.currentTab !== tabId) return;
       const hasVideo = hasAnyFrameTrue(results);
       if (hasVideo) setTargetTab(tabId);
       debugLog('background', eventName, { tabId, hasVideo, targetTab: AutoPip.state.targetTab });
@@ -31,7 +34,7 @@
   }
 
   function exitOwnedPiPOnActiveTab(tabId, reason, callback) {
-    injectExitPiPScript(tabId, (results) => {
+    injectExitTabPiPScript(tabId, (results) => {
       const frameValues = getFrameResultValues(results);
       const exited = hasExitedPiP(results);
       if (exited || AutoPip.state.pipActiveTab === tabId) {
@@ -123,11 +126,17 @@
 
   function primeActiveTabForAutoPip() {
     debugLog('background', 'prime_active_tab_start');
+    chrome.tabs.query({ active: true }, (tabs) => {
+      for (const tab of tabs || []) {
+        if (!activeTabByWindow.has(tab.windowId)) activeTabByWindow.set(tab.windowId, tab.id);
+      }
+    });
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs && tabs.length > 0 ? tabs[0] : null;
       if (!isValidTab(activeTab) || !isAutoPipAllowedTab(activeTab)) return;
       registerTabForAutoPip(activeTab.id, () => { });
       injectCheckVideoScript(activeTab.id, (results) => {
+        if (activeTabByWindow.get(activeTab.windowId) !== activeTab.id) return;
         if (!hasAnyFrameTrue(results)) return;
         setTargetTab(activeTab.id);
         AutoPip.state.currentTab = activeTab.id;
@@ -190,12 +199,9 @@
 
   function handleTabActivated(tab) {
     const activatedTabId = tab.tabId;
-    const previousCurrentTab = AutoPip.state.currentTab;
+    const previousCurrentTab = activeTabByWindow.get(tab.windowId);
+    activeTabByWindow.set(tab.windowId, activatedTabId);
     const leavingTargetTab = AutoPip.state.autoPipOnTabSwitch &&
-      AutoPip.state.targetTab != null &&
-      activatedTabId !== AutoPip.state.targetTab
-      ? AutoPip.state.targetTab
-      : AutoPip.state.autoPipOnTabSwitch &&
         previousCurrentTab != null &&
         activatedTabId !== previousCurrentTab
         ? previousCurrentTab
@@ -216,13 +222,13 @@
 
     if (leavingTargetTab != null) {
       registerTabForAutoPip(leavingTargetTab, () => {
+        if (!AutoPip.state.autoPipOnTabSwitch || activeTabByWindow.get(tab.windowId) === leavingTargetTab) return;
         requestCompatibilityPiPOnTabLeave(leavingTargetTab, leavingReason);
       });
     }
 
-    chrome.tabs.get(AutoPip.state.currentTab, (activeTab) => {
-      if (chrome.runtime.lastError || !activeTab) return;
-      AutoPip.state.currentTab = activeTab.id;
+    chrome.tabs.get(activatedTabId, (activeTab) => {
+      if (chrome.runtime.lastError || !activeTab || AutoPip.state.currentTab !== activatedTabId) return;
 
       if (!isAutoPipAllowedTab(activeTab)) {
         debugLog('background', 'active_tab_blocked', { tabId: AutoPip.state.currentTab, url: activeTab.url });
@@ -242,7 +248,8 @@
         ? 'returned_to_target'
         : 'active_tab_visible';
       exitOwnedPiPOnActiveTab(AutoPip.state.currentTab, activationReason, () => {
-        refreshActiveTabTarget(AutoPip.state.currentTab, activationReason === 'returned_to_target'
+        if (AutoPip.state.currentTab !== activatedTabId) return;
+        refreshActiveTabTarget(activatedTabId, activationReason === 'returned_to_target'
           ? 'returned_to_target_checked'
           : 'active_tab_checked_for_target');
       });
@@ -279,15 +286,16 @@
 
   function handleVideoPlayingMessage(senderTab) {
     const senderTabId = senderTab.id;
-    if (!isAutoPipAllowedTab(senderTab) || !AutoPip.state.autoPipOnTabSwitch) return;
+    if (!senderTab.active || !isAutoPipAllowedTab(senderTab) || !AutoPip.state.autoPipOnTabSwitch) return;
+    if (!activeTabByWindow.has(senderTab.windowId)) activeTabByWindow.set(senderTab.windowId, senderTabId);
     const now = Date.now();
     if ((now - (AutoPip.state.lastVideoPlayingTargetedAtByTab[senderTabId] || 0)) < VIDEO_PLAYING_MESSAGE_THROTTLE_MS) {
       return;
     }
     AutoPip.state.lastVideoPlayingTargetedAtByTab[senderTabId] = now;
+    registerTabForAutoPip(senderTabId, () => { });
     if (senderTabId === AutoPip.state.currentTab || AutoPip.state.targetTab === null) {
       setTargetTab(senderTabId);
-      registerTabForAutoPip(senderTabId, () => { });
       debugLog('background', 'video_playing_targeted', {
         tabId: senderTabId,
         currentTab: AutoPip.state.currentTab,
@@ -301,6 +309,7 @@
     chrome.tabs.onRemoved.addListener(handleTabRemoved);
     chrome.tabs.onActivated.addListener(handleTabActivated);
     chrome.tabs.onUpdated.addListener(handleTabUpdated);
+    chrome.windows?.onRemoved.addListener(windowId => activeTabByWindow.delete(windowId));
     if (chrome.action) chrome.action.onClicked.addListener(handleToolbarClick);
   }
 

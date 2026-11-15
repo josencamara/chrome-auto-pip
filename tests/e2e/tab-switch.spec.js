@@ -45,7 +45,29 @@ async function videoFlags(page) {
   });
 }
 
-test('tab switch setting, paused skip, and repeated muted compatibility PiP', async ({ context, page, extensionId }) => {
+async function browserTabId(worker, page) {
+  const tabId = await worker.evaluate(async url => {
+    const tabs = await chrome.tabs.query({});
+    return tabs.find(tab => tab.url === url)?.id;
+  }, page.url());
+  expect(tabId).toEqual(expect.any(Number));
+  return tabId;
+}
+
+async function selectTab(worker, tabId) {
+  expect(await worker.evaluate(async tabId => {
+    await chrome.tabs.update(tabId, { active: true });
+    return (await chrome.tabs.get(tabId)).active;
+  }, tabId)).toBe(true);
+}
+
+async function switchAwayWithActivation(videoPage, destinationTab, worker) {
+  await videoPage.locator('video').click();
+  expect(await videoPage.evaluate(() => navigator.userActivation.isActive)).toBe(true);
+  await selectTab(worker, destinationTab);
+}
+
+test('tab switch setting, paused skip, and repeated muted compatibility PiP', async ({ context, page, extensionId }, testInfo) => {
   test.setTimeout(120000);
 
   const worker = context.__autoPipExtensionWorker || context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
@@ -55,6 +77,7 @@ test('tab switch setting, paused skip, and repeated muted compatibility PiP', as
   try {
     await page.goto(`chrome-extension://${extensionId}/options.html`);
     await expect.poll(async () => worker.evaluate(() => typeof autoPipOnTabSwitch !== 'undefined')).toBe(true);
+    await worker.evaluate(() => chrome.storage.local.set({ autoPipDebugEnabled: true }));
 
     await setToggle(page, 'autoPipOnTabSwitch', false);
     await expect.poll(async () => worker.evaluate(async () => {
@@ -75,6 +98,7 @@ test('tab switch setting, paused skip, and repeated muted compatibility PiP', as
     const pausedPage = await context.newPage();
     openedPages.push(pausedPage);
     await pausedPage.goto(`${baseURL}/sample-video.html`);
+    await selectTab(worker, await browserTabId(worker, pausedPage));
 
     await expect.poll(async () => videoFlags(pausedPage), { timeout: 15000 }).toMatchObject({
       hasVideo: true,
@@ -102,7 +126,8 @@ test('tab switch setting, paused skip, and repeated muted compatibility PiP', as
     const blankPage = await context.newPage();
     openedPages.push(blankPage);
     await blankPage.goto(`${baseURL}/blank.html`);
-    await blankPage.bringToFront();
+    const blankTab = await browserTabId(worker, blankPage);
+    await selectTab(worker, blankTab);
     await blankPage.waitForTimeout(1000);
     expect((await videoFlags(pausedPage)).inPictureInPicture).toBe(false);
     await pausedPage.close();
@@ -110,6 +135,8 @@ test('tab switch setting, paused skip, and repeated muted compatibility PiP', as
     const videoPage = await context.newPage();
     openedPages.push(videoPage);
     await videoPage.goto(`${baseURL}/sample-video.html`);
+    const videoTab = await browserTabId(worker, videoPage);
+    await selectTab(worker, videoTab);
     await expect.poll(async () => videoFlags(videoPage), { timeout: 15000 }).toMatchObject({
       hasVideo: true,
       playing: true,
@@ -117,25 +144,32 @@ test('tab switch setting, paused skip, and repeated muted compatibility PiP', as
       autoPipAttr: true
     });
 
-    await blankPage.bringToFront();
+    await switchAwayWithActivation(videoPage, blankTab, worker);
     await expect.poll(async () => videoFlags(videoPage), { timeout: 10000 }).toMatchObject({
       inPictureInPicture: true,
       compatRequested: true,
       owned: true
     });
 
-    await videoPage.bringToFront();
+    await selectTab(worker, videoTab);
     await expect.poll(async () => videoFlags(videoPage), { timeout: 10000 }).toMatchObject({
       inPictureInPicture: false,
       playing: true
     });
 
-    await blankPage.bringToFront();
+    await switchAwayWithActivation(videoPage, blankTab, worker);
     await expect.poll(async () => videoFlags(videoPage), { timeout: 10000 }).toMatchObject({
       inPictureInPicture: true,
       playing: true,
       muted: true
     });
+  } catch (error) {
+    const log = await worker.evaluate(() => chrome.storage.local.get('autoPipDebugLog')).catch(() => ({}));
+    await testInfo.attach('extension-debug-log', {
+      body: JSON.stringify(log.autoPipDebugLog || [], null, 2),
+      contentType: 'application/json'
+    });
+    throw error;
   } finally {
     await Promise.all(openedPages.map(openPage => openPage.isClosed() ? null : openPage.close().catch(() => {})));
     server.close();

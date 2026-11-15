@@ -4,6 +4,7 @@
     const videoLib = window.AutoPipContent && window.AutoPipContent.video;
     const pip = window.AutoPipContent && window.AutoPipContent.pip;
     const path = 'tab_leave_compat';
+    const getSelection = () => chrome.runtime.sendMessage({ type: 'auto_pip_tab_selection' }).catch(() => null);
 
     try {
         if (!videoLib || !pip) {
@@ -15,7 +16,13 @@
         }
 
         if (document.pictureInPictureElement) {
-            return videoLib.result(true, 'already_active', 'already_active', path, document.pictureInPictureElement);
+            const active = document.pictureInPictureElement;
+            const automatic = active.hasAttribute(window.AutoPipContent.markers.compatRequested);
+            return videoLib.result(automatic, automatic ? 'already_active' : 'skipped', 'already_active', path, active);
+        }
+
+        if (!(await getSelection())?.inactive) {
+            return videoLib.result(false, 'skipped', 'tab_active_or_unavailable', path, null);
         }
 
         const candidates = videoLib.findVideos({
@@ -39,6 +46,11 @@
             ensureAutoPipAttr: true,
             compat: true
         });
+        const selection = await getSelection();
+        if (selection?.inactive === false && document.pictureInPictureElement === video) {
+            await pip.exitOwned();
+            return videoLib.result(false, 'skipped', 'tab_returned', path, video);
+        }
         return videoLib.result(true, 'success', 'requested_picture_in_picture', path, video);
     } catch (error) {
         return {

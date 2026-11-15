@@ -5,6 +5,7 @@
     const pip = window.AutoPipContent && window.AutoPipContent.pip;
     const path = 'cleanup';
 
+    window.__auto_pip_settings_revision__ = (window.__auto_pip_settings_revision__ || 0) + 1;
     try { window.__auto_pip_disabled__ = true; } catch (_) { }
     try { window.__auto_pip_blocked__ = true; } catch (_) { }
     try { window.__auto_pip_registered__ = false; } catch (_) { }

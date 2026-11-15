@@ -5,37 +5,39 @@
   const { DEBUG_LOG_LIMIT, DEFAULT_ACTION_TITLE, BLOCKED_ACTION_TITLE, STORAGE_KEYS } = AutoPip.constants;
   const { getHostnameFromUrl } = AutoPip.urlRules;
 
+  let debugWrites = Promise.resolve();
+
   function debugLog(source, event, details = {}) {
-    try {
-      if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) return;
-      chrome.storage.local.get([
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
+    const at = new Date().toISOString();
+    debugWrites = debugWrites.then(async () => {
+      const data = await chrome.storage.local.get([
         STORAGE_KEYS.autoPipDebugEnabled,
         STORAGE_KEYS.autoPipDebugLog,
         STORAGE_KEYS.autoPipDebugText
-      ], (data) => {
-        if (!data || data[STORAGE_KEYS.autoPipDebugEnabled] !== true) return;
-        const log = Array.isArray(data && data[STORAGE_KEYS.autoPipDebugLog])
-          ? data[STORAGE_KEYS.autoPipDebugLog]
-          : [];
-        const entry = {
-          at: new Date().toISOString(),
-          source,
-          event,
-          details
-        };
-        log.push(entry);
-        const line = `AUTO_PIP_DEBUG ${entry.at} ${source} ${event} ${JSON.stringify(details)}`;
-        const text = typeof data[STORAGE_KEYS.autoPipDebugText] === 'string'
-          ? data[STORAGE_KEYS.autoPipDebugText]
-          : '';
-        const lines = text ? text.split('\n') : [];
-        lines.push(line);
-        chrome.storage.local.set({
-          [STORAGE_KEYS.autoPipDebugLog]: log.slice(-DEBUG_LOG_LIMIT),
-          [STORAGE_KEYS.autoPipDebugText]: lines.slice(-DEBUG_LOG_LIMIT).join('\n')
-        });
+      ]);
+      if (!data || data[STORAGE_KEYS.autoPipDebugEnabled] !== true) return;
+      const log = Array.isArray(data && data[STORAGE_KEYS.autoPipDebugLog])
+        ? data[STORAGE_KEYS.autoPipDebugLog]
+        : [];
+      const entry = {
+        at,
+        source,
+        event,
+        details
+      };
+      log.push(entry);
+      const line = `AUTO_PIP_DEBUG ${entry.at} ${source} ${event} ${JSON.stringify(details)}`;
+      const text = typeof data[STORAGE_KEYS.autoPipDebugText] === 'string'
+        ? data[STORAGE_KEYS.autoPipDebugText]
+        : '';
+      const lines = text ? text.split('\n') : [];
+      lines.push(line);
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.autoPipDebugLog]: log.slice(-DEBUG_LOG_LIMIT),
+        [STORAGE_KEYS.autoPipDebugText]: lines.slice(-DEBUG_LOG_LIMIT).join('\n')
       });
-    } catch (_) { }
+    }).catch(() => {});
   }
 
   function getBlockerHost(details, tab) {
