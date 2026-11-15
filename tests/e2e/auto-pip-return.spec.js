@@ -13,6 +13,7 @@ function fixture({ delayed = false, rejectExit = false } = {}) {
   let exits = 0;
   let refresh;
   let registrations = 0;
+  let requests = 0;
   class Video {
     constructor() {
       Object.assign(this, { paused: false, ended: false, readyState: 4,
@@ -23,6 +24,7 @@ function fixture({ delayed = false, rejectExit = false } = {}) {
     removeAttribute(name) { attributes.delete(name); }
     addEventListener(name, handler) { videoListeners[name] = handler; }
     async requestPictureInPicture() {
+      requests++;
       if (delayed) await new Promise(resolve => { complete = resolve; });
       document.pictureInPictureElement = this;
     }
@@ -51,7 +53,7 @@ function fixture({ delayed = false, rejectExit = false } = {}) {
     Set
   });
   return {
-    video, document, action, get exits() { return exits; },
+    video, document, action, get exits() { return exits; }, get requests() { return requests; },
     get registrations() { return registrations; },
     hidden() { document.visibilityState = 'hidden'; listeners.visibilitychange(); },
     complete: () => complete(),
@@ -94,6 +96,16 @@ test('a native departure arriving before visibility changes keeps PiP open', asy
   expect(f.exits).toBe(0);
   await f.visible();
   expect(f.document.pictureInPictureElement).toBeNull();
+});
+
+test('overlapping native and compatibility actions request PiP once', async () => {
+  const f = fixture({ delayed: true });
+  const entering = f.action();
+  await f.action({ enterPictureInPictureReason: 'contentoccluded' });
+  expect(f.requests).toBe(1);
+  f.complete();
+  await entering;
+  expect(f.document.pictureInPictureElement).toBe(f.video);
 });
 
 test('automatic PiP remains identifiable after playback pauses in the background', async () => {

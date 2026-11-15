@@ -314,6 +314,10 @@
             debugLog('page_enterpictureinpicture_already_active');
             return true;
         }
+        if (state.entryPending) {
+            debugLog('page_enterpictureinpicture_already_pending');
+            return true;
+        }
 
         const video = getVideos().find(isPlaying);
         if (!video || typeof video.requestPictureInPicture !== 'function') {
@@ -321,6 +325,7 @@
             return false;
         }
 
+        state.entryPending = true;
         try {
             syncVideo(video);
             attachPiPStateBridge(video);
@@ -344,6 +349,8 @@
                 userActivation: getUserActivationState()
             });
             return false;
+        } finally {
+            state.entryPending = false;
         }
     }
 
